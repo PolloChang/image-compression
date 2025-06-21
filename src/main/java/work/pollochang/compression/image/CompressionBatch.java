@@ -54,7 +54,8 @@ public class CompressionBatch {
         // 使用執行緒池平行處理
         int threads = Runtime.getRuntime().availableProcessors(); // 使用與CPU核心數相同的執行緒數量
         // 使用原子計數器在多執行緒環境下安全地計數
-        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger successCompressedCount = new AtomicInteger(0);
+        AtomicInteger notCompressedCount = new AtomicInteger(0);
         AtomicInteger failureCount = new AtomicInteger(0);
 
         ExecutorService executor = Executors.newFixedThreadPool(threads);
@@ -66,8 +67,13 @@ public class CompressionBatch {
                 try {
                     // processImage 應返回一個布林值或透過異常來判斷成功與否
                     // 假設我們修改 processImage，讓它在成功時返回 true
-                    imageCompression.processImage(inputPath, outputDir, quality);
-                    successCount.incrementAndGet();
+                    if (imageCompression.processImage(inputPath, outputDir, quality)) {
+                        successCompressedCount.incrementAndGet();
+                    } else {
+                        notCompressedCount.incrementAndGet();
+                    }
+
+
                 } catch (Exception e) {
                     log.warn(e.getMessage());
                     failureCount.incrementAndGet();
@@ -91,7 +97,7 @@ public class CompressionBatch {
         }
 
         log.info("所有圖片處理完成！");
-        log.info("處理結果 -> 總計: {}, 成功: {}, 失敗: {}", imagePaths.size(), successCount.get(), failureCount.get());
+        log.info("處理結果 -> 總計: {}, 成功壓縮: {} , 不壓縮: {} , 失敗: {}", imagePaths.size(), successCompressedCount.get(), notCompressedCount.get() , failureCount.get());
     }
 
 }

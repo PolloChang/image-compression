@@ -7,11 +7,9 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
+import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
@@ -29,10 +27,13 @@ public class ImageCompression {
      * @param outputDir  輸出圖片檔案
      * @param quality     壓縮品質 (0.0f 到 1.0f 之間)
      */
-    public void processImage(Path inputPath, Path outputDir, float quality) {
+    public boolean processImage(Path inputPath, Path outputDir, float quality) {
+
+        boolean isCompressed = false;
+
         if (!Files.exists(inputPath)) {
             log.warn("檔案不存在，跳過處理: {}", inputPath);
-            return;
+            return isCompressed;
         }
 
         String fileName = inputPath.getFileName().toString();
@@ -40,16 +41,19 @@ public class ImageCompression {
         File inputFile = inputPath.toFile();
 
         try {
-            log.info("開始壓縮檔案: {} -> {}", inputPath, outputFile.getAbsolutePath());
 
-            compressImage(inputFile, outputFile, quality);
+            log.info("開始壓縮檔案: {} ", inputPath);
 
-            log.info("圖片已成功壓縮並儲存至: {}", outputFile.getAbsolutePath());
+            isCompressed = compressImage(inputFile, outputFile, quality);
+
+            log.info("圖片已成功壓縮並儲存: {} -> {}", inputPath, outputFile.getAbsolutePath());
 
         } catch (IOException e) {
             log.warn("無法處理圖片檔案 (可能非支援格式或檔案已損毀): {}", inputPath, e);
         } catch (Exception e) {
             log.error("處理檔案時發生未知錯誤: {}", inputPath, e);
+        } finally {
+            return isCompressed;
         }
     }
 
@@ -62,15 +66,70 @@ public class ImageCompression {
      * @throws IOException 檔案讀寫發生錯誤時拋出
      * @throws IllegalArgumentException 壓縮品質參數錯誤時拋出
      */
-    private void compressImage(File inputFile, File outputFile, float quality) throws IOException {
+    private boolean compressImage(File inputFile, File outputFile, float quality) throws IOException {
+
+        boolean isCompressed = false;
+
+        String fileType = getImageFileType(inputFile);
+
         // 1. 讀取來源圖片
         BufferedImage image = ImageIO.read(inputFile);
-        if (image == null) {
-            log.warn("無法讀取圖片檔案，可能非支援格式或檔案已損毀: {}", inputFile.getAbsolutePath());
-            return;
+
+        log.debug("fileType = {}",fileType);
+
+        if ( !fileType.equals("jpg") && !fileType.equals("png") ) {
+            log.warn("不支援的檔案格式: {} - {}", inputFile.getAbsolutePath() , fileType);
+            return isCompressed;
         }
 
-        // 2. 尋找合適的 ImageWriter (這裡我們使用 JPEG)
+        if (fileType.equals("jpg")){
+            compressImageJPG(image, outputFile, quality);
+            isCompressed = true;
+        } else if (fileType.equals("png")){
+            compressImagePNG(image, outputFile);
+        }
+
+        return isCompressed;
+
+    }
+
+    private void compressImagePNG(BufferedImage originalImage, File outputFile) throws IOException {
+
+        log.debug("進行壓縮: PNG");
+
+        try {
+
+            // 定義目標寬度和高度
+            int targetWidth = 1920; // 例如，縮小到 1920 像素寬
+            int targetHeight = (int) (originalImage.getHeight() * ((double) targetWidth / originalImage.getWidth())); // 等比例縮放
+
+            // 創建一個新的 BufferedImage，用於存放縮放後的圖片
+            // 建議使用原始圖片的類型，或者 BufferedImage.TYPE_INT_ARGB 以保留透明度
+            BufferedImage resizedImage = new BufferedImage(targetWidth, targetHeight, originalImage.getType());
+
+            // 取得 Graphics2D 物件以進行繪圖
+            Graphics2D g2d = resizedImage.createGraphics();
+
+            // 設定渲染提示，提高縮放品質 (例如抗鋸齒和平滑度)
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            // 將原始圖片繪製到新的 BufferedImage 上，並指定目標尺寸
+            g2d.drawImage(originalImage, 0, 0, targetWidth, targetHeight, null);
+            g2d.dispose(); // 釋放繪圖資源
+
+            // 輸出縮放後的圖片
+            ImageIO.write(resizedImage, "png", outputFile);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void compressImageJPG(BufferedImage image, File outputFile, float quality) throws IOException {
+        log.debug("進行壓縮: JPG");
+
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
         if (!writers.hasNext()) {
             throw new IllegalStateException("找不到可用的 JPG 圖片寫入器");
@@ -99,5 +158,44 @@ public class ImageCompression {
             // 6. 清理資源
             writer.dispose();
         }
+    }
+
+    /**
+     * 取得檔案格式
+     * @param file
+     * @return
+     * @throws IOException
+     */
+    private String getImageFileType(File file) throws IOException {
+
+        if(file == null || !file.exists() || !file.isFile()) {
+            log.warn("無法讀取圖片檔案，可能非支援格式或檔案已損毀: {}", file.getAbsolutePath());
+            return null;
+        }
+
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] magicBytes = new byte[8]; // PNG 需要8個位元組，JPG 只需要4個
+            int bytesRead = fis.read(magicBytes, 0, Math.min(magicBytes.length, (int)file.length()));
+
+            if (bytesRead >= 8) {
+                // 檢查 PNG
+                if (magicBytes[0] == (byte) 0x89 && magicBytes[1] == (byte) 0x50 &&
+                        magicBytes[2] == (byte) 0x4E && magicBytes[3] == (byte) 0x47 &&
+                        magicBytes[4] == (byte) 0x0D && magicBytes[5] == (byte) 0x0A &&
+                        magicBytes[6] == (byte) 0x1A && magicBytes[7] == (byte) 0x0A) {
+                    return "png";
+                }
+            }
+
+            if (bytesRead >= 4) {
+                // 檢查 JPG/JPEG
+                if (magicBytes[0] == (byte) 0xFF && magicBytes[1] == (byte) 0xD8 &&
+                        magicBytes[2] == (byte) 0xFF &&
+                        (magicBytes[3] == (byte) 0xE0 || magicBytes[3] == (byte) 0xE1 || magicBytes[3] == (byte) 0xE8)) {
+                    return "jpg";
+                }
+            }
+        }
+        return "UNKNOWN";
     }
 }
