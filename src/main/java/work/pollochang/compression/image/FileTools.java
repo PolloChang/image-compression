@@ -13,7 +13,7 @@ public class FileTools {
      * 確保指定的目錄存在，如果不存在則建立它。
      * @param directoryPath 要檢查或建立的目錄路徑
      */
-    public void ensureDirectoryExists(Path directoryPath) {
+    public static void ensureDirectoryExists(Path directoryPath) {
         if (!Files.exists(directoryPath)) {
             try {
                 Files.createDirectories(directoryPath);

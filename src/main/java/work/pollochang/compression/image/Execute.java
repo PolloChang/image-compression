@@ -38,19 +38,17 @@ public class Execute implements Callable<Integer> {
         log.info("壓縮任務開始");
         log.info("來源列表: {}", fileList.getAbsolutePath());
         log.info("輸出目錄: {}", saveDir.getAbsolutePath());
-        log.info("壓縮品質: {}", quality);
-        log.info("限制要壓縮的圖片大小: {}", minSizeBytes);
-        log.info("限制要壓縮的圖片長: {}", minWidth);
-        log.info("限制要壓縮的圖片高: {}", minHeight);
+        log.info("JPG 壓縮品質: {}", quality);
+        log.info("最小壓縮尺寸: {}x{}", minWidth, minHeight);
+        log.info("最小壓縮大小: {}", ImageCompression.formatFileSize(minSizeBytes));
 
+        // 使用 record 封裝參數
+        ImageCompression.CompressionParams params = new ImageCompression.CompressionParams(quality, minSizeBytes, minWidth, minHeight);
 
         CompressionBatch compressionBatch = new CompressionBatch();
-        compressionBatch.setQuality(quality);
-        compressionBatch.setSaveDir(saveDir.getAbsolutePath());
         compressionBatch.setFileListPath(fileList.getAbsolutePath());
-        compressionBatch.setMinSizeBytes(minSizeBytes);
-        compressionBatch.setMinWidth(minWidth);
-        compressionBatch.setMinHeight(minHeight);
+        compressionBatch.setSaveDir(saveDir.getAbsolutePath());
+        compressionBatch.setCompressionParams(params);
         compressionBatch.execute();
 
         log.info("所有任務執行完畢");
