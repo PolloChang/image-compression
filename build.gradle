@@ -12,8 +12,25 @@ repositories {
 dependencies {
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+    implementation("org.slf4j:slf4j-api:2.0.17")
+
+    // https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
+    implementation("ch.qos.logback:logback-classic:1.5.18")
+
+    // https://mvnrepository.com/artifact/org.projectlombok/lombok
+    implementation("org.projectlombok:lombok:1.18.38")
+    annotationProcessor("org.projectlombok:lombok:1.18.38")
+    testCompileOnly("org.projectlombok:lombok:1.18.38")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.38")
 }
 
 test {
     useJUnitPlatform()
+}
+
+task runDev(type: JavaExec) {
+    classpath sourceSets.main.runtimeClasspath
+    mainClass = 'work.pollochang.compression.image.Execute' // 您的 main 類別
+    systemProperties 'logback.configurationFile': 'logback-dev.xml' // 透過 JVM 系統屬性告訴 Logback 使用 logback-dev.xml
 }
