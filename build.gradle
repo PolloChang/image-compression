@@ -24,9 +24,6 @@ dependencies {
     testCompileOnly("org.projectlombok:lombok:1.18.38")
     testAnnotationProcessor("org.projectlombok:lombok:1.18.38")
 
-    // https://mvnrepository.com/artifact/net.coobird/thumbnailator
-    implementation("net.coobird:thumbnailator:0.4.20")
-
     // https://mvnrepository.com/artifact/info.picocli/picocli
     implementation("info.picocli:picocli:4.7.7")
 }
