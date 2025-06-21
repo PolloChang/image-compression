@@ -35,7 +35,7 @@ public class ImageCompression {
 
             // 使用 thumbnailator 進行壓縮
             Thumbnails.of(inputFile)
-                    .scale(1.0) // 保持原始尺寸
+                    .keepAspectRatio(true)
                     .outputQuality(quality) // 設定壓縮品質
                     .toFile(outputFile);
 
