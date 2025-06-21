@@ -3,14 +3,14 @@ package work.pollochang.compression.image;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.imageio.*;
+import javax.imageio.spi.IIORegistry;
+import javax.imageio.spi.ImageReaderSpi;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -19,44 +19,63 @@ import java.text.DecimalFormat;
 import java.util.Iterator;
 
 /**
- * 圖片壓縮工具類 (重構為無狀態)
+ * 圖片壓縮工具類
  */
 @Slf4j
 public final class ImageCompression {
 
-    public record CompressionParams(float quality, long minSizeBytes, int minWidth, int minHeight, long targetMaxSizeBytes) {}
+    // 註冊 ImageIO 外掛程式，禁用磁碟快取，強制使用記憶體操作，避免 I/O 瓶頸。
+    static {
+        IIORegistry.getDefaultInstance().registerApplicationClasspathSpis();
+        ImageIO.setUseCache(false);
+    }
 
-    /**
-     * 新增的內部 record，用於封裝壓縮結果和檔案大小資訊
-     */
+    public record CompressionParams(float quality, long minSizeBytes, int minWidth, int minHeight, long targetMaxSizeBytes) {}
     public record CompressionReport(CompressionResult result, long originalSize, long compressedSize) {}
+
+    // 內部類，用於封裝解碼後的圖片和其讀取器，方便資源管理
+    private record DecodedImage(BufferedImage image, ImageReader reader) implements AutoCloseable {
+        @Override
+        public void close() {
+            if (image != null) {
+                image.flush();
+            }
+            if (reader != null) {
+                reader.dispose();
+            }
+        }
+    }
 
     private ImageCompression() {}
 
     public static CompressionReport processImage(Path inputPath, Path outputDir, CompressionParams params) {
-        if (!Files.exists(inputPath)) {
-            log.warn("檔案不存在，跳過: {}", inputPath);
-            return new CompressionReport(CompressionResult.SKIPPED_NOT_FOUND, 0, 0); // 檔案不存在，大小為 0
-        }
-
         long originalSize;
         try {
+            if (!Files.exists(inputPath) || !Files.isReadable(inputPath)) {
+                log.warn("檔案不存在或不可讀，跳過: {}", inputPath);
+                return new CompressionReport(CompressionResult.SKIPPED_NOT_FOUND, 0, 0);
+            }
             originalSize = Files.size(inputPath);
         } catch (IOException e) {
             log.warn("無法讀取檔案大小: {}", inputPath, e);
             return new CompressionReport(CompressionResult.FAILED_IO_ERROR, 0, 0);
         }
 
-        try {
-            if (!shouldCompressImage(inputPath, params, originalSize)) {
-                // 不符合條件，原始大小和壓縮後大小都視為原始大小
-                return new CompressionReport(CompressionResult.SKIPPED_CONDITION_NOT_MET, originalSize, originalSize);
+        try (DecodedImage decodedImage = decodeImageWithSubsampling(inputPath, params, originalSize)) {
+            if (decodedImage == null) {
+                // 如果解碼階段就已決定跳過或失敗，會回傳 null
+                // 檢查是否符合壓縮條件的日誌已在 decodeImageWithSubsampling 內部處理
+                boolean shouldCompress = (originalSize > params.minSizeBytes()); // 簡化判斷，詳細尺寸判斷已在內部
+                return new CompressionReport(
+                        shouldCompress ? CompressionResult.FAILED_UNSUPPORTED_FORMAT : CompressionResult.SKIPPED_CONDITION_NOT_MET,
+                        originalSize, originalSize
+                );
             }
 
             Path outputFile = outputDir.resolve(inputPath.getFileName());
-
             log.info("開始處理: {}", inputPath);
-            boolean success = compressImageIteratively(inputPath, outputFile, params);
+
+            boolean success = compressImageIteratively(decodedImage, outputFile, params);
 
             if (success) {
                 long compressedSize = Files.size(outputFile);
@@ -67,13 +86,16 @@ public final class ImageCompression {
                 return new CompressionReport(CompressionResult.COMPRESSED_SUCCESS, originalSize, compressedSize);
             } else {
                 log.warn("無法在目標大小限制下完成壓縮: {}", inputPath);
+                // 即使壓縮失敗，也應該清除可能已建立的空檔案或不完整檔案
+                Files.deleteIfExists(outputFile);
                 return new CompressionReport(CompressionResult.FAILED_COMPRESSION, originalSize, 0);
             }
         } catch (IOException e) {
             log.warn("處理圖片時發生 I/O 錯誤 (可能非支援格式或檔案損毀): {}", inputPath, e);
             return new CompressionReport(CompressionResult.FAILED_IO_ERROR, originalSize, 0);
         } catch (OutOfMemoryError e) {
-            log.error("處理檔案時發生記憶體溢位錯誤 (圖片可能過大): {}", inputPath, e);
+            // 儘管已經做了二次取樣，極端情況下仍可能發生。
+            log.error("處理檔案時發生記憶體溢位錯誤 (圖片可能過大或格式有問題): {}", inputPath, e);
             return new CompressionReport(CompressionResult.FAILED_OUT_OF_MEMORY, originalSize, 0);
         } catch (Exception e) {
             log.error("處理檔案時發生未知錯誤: {}", inputPath, e);
@@ -81,96 +103,129 @@ public final class ImageCompression {
         }
     }
 
-    private static boolean shouldCompressImage(Path inputPath, CompressionParams params, long fileSize) throws IOException {
+    private static DecodedImage decodeImageWithSubsampling(Path inputPath, CompressionParams params, long fileSize) throws IOException {
         if (fileSize <= params.minSizeBytes()) {
             log.info("檔案大小 {} 未超過最小壓縮門檻 {}，跳過: {}", formatFileSize(fileSize), formatFileSize(params.minSizeBytes()), inputPath);
-            return false;
+            return null;
         }
 
-        try (ImageInputStream in = ImageIO.createImageInputStream(inputPath.toFile())) {
+        try (ImageInputStream in = ImageIO.createImageInputStream(Files.newInputStream(inputPath))) {
             if (in == null) {
                 log.warn("無法建立圖片輸入流，跳過: {}", inputPath);
-                return false;
+                return null;
             }
+
             Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
-            if (readers.hasNext()) {
-                ImageReader reader = readers.next();
-                try {
-                    reader.setInput(in);
-                    int width = reader.getWidth(0);
-                    int height = reader.getHeight(0);
-                    if (width <= params.minWidth() || height <= params.minHeight()) {
-                        log.info("圖片尺寸 {}x{} 未超過最小壓縮門檻 {}x{}，跳過: {}", width, height, params.minWidth(), params.minHeight(), inputPath);
-                        return false;
-                    }
-                } finally {
-                    reader.dispose();
-                }
-            } else {
+            if (!readers.hasNext()) {
                 log.warn("找不到對應的圖片讀取器，跳過: {}", inputPath);
-                return false;
+                return null;
+            }
+
+            ImageReader reader = readers.next();
+            reader.setInput(in, true, true);
+
+            try {
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (width <= params.minWidth() || height <= params.minHeight()) {
+                    log.info("圖片尺寸 {}x{} 未超過最小壓縮門檻 {}x{}，跳過: {}", width, height, params.minWidth(), params.minHeight(), inputPath);
+                    reader.dispose();
+                    return null;
+                }
+
+                ImageReadParam param = reader.getDefaultReadParam();
+                // 核心優化：計算取樣率以降低記憶體使用
+                // 目標是讓圖片最長邊接近 4K (4096px) 進行初步讀取，可根據實際情況調整
+                int subsampling = 1;
+                int maxDim = Math.max(width, height);
+                final int PREFERRED_MAX_DIM = 4096;
+                if (maxDim > PREFERRED_MAX_DIM) {
+                    subsampling = (int) Math.floor((double) maxDim / PREFERRED_MAX_DIM);
+                }
+
+                // ImageIO 的 subsampling 只支援整數，並且對於某些格式(如隔行掃描的 JPG)有特定要求
+                if (subsampling > 1) {
+                    // 確保取樣率是 2 的冪，對某些 JPG 解碼器更友好
+                    subsampling = Integer.highestOneBit(subsampling);
+                    log.debug("對圖片 {} 應用二次取樣，比率: {}", inputPath.getFileName(), subsampling);
+                    param.setSourceSubsampling(subsampling, subsampling, 0, 0);
+                }
+
+                BufferedImage image = reader.read(0, param);
+                // 注意：此時返回的 reader 不能關閉，因為 DecodedImage 的 AutoCloseable 會負責關閉
+                return new DecodedImage(image, reader);
+
+            } catch (Exception e) {
+                // 如果在讀取尺寸或應用取樣時出錯，安全地釋放 reader
+                reader.dispose();
+                throw e; // 重新拋出異常，讓外層捕捉
             }
         }
-        return true;
     }
 
-    /**
-     * 【記憶體瓶頸警告】
-     * 無論如何優化，`ImageIO.read()` 都會將解碼後的圖片完整載入記憶體。
-     * 對於高解析度圖片（例如 4K 或更高），這可能消耗數百 MB 的堆記憶體。
-     * 在記憶體受限的環境下，這是造成 OutOfMemoryError 的主要風險點。
-     */
-    private static boolean compressImageIteratively(Path inputFile, Path outputFile, CompressionParams params) throws IOException {
-        String fileType = getImageFileType(inputFile.toFile());
-        if (fileType == null || !("jpg".equals(fileType) || "png".equals(fileType))) {
-            log.warn("檔案類型 {} 不支援或無法識別，跳過壓縮: {}", fileType, inputFile);
-            return false;
-        }
+    private static boolean compressImageIteratively(DecodedImage decodedImage, Path outputFile, CompressionParams params) throws IOException {
+        ImageReaderSpi spi = decodedImage.reader().getOriginatingProvider();
+        String formatName = spi.getFormatNames()[0].toLowerCase();
 
-        BufferedImage image = ImageIO.read(inputFile.toFile());
-        if (image == null) {
-            log.warn("ImageIO 無法讀取檔案 (可能已損毀): {}", inputFile);
-            return false;
-        }
+        BufferedImage initialImage = decodedImage.image();
 
         try {
-            switch (fileType) {
+            switch (formatName) {
+                case "jpeg":
                 case "jpg":
-                    return compressJpgWithTargetSize(image, outputFile, params);
+                    return compressJpgWithTargetSize(initialImage, outputFile, params);
                 case "png":
-                    return compressPngWithTargetSize(image, outputFile, params);
+                    return compressPngWithTargetSize(initialImage, outputFile, params);
                 default:
+                    log.warn("不支援的檔案格式: {} (來自 SPI)，跳過壓縮: {}", formatName, outputFile.getFileName());
                     return false;
             }
         } finally {
-            image.flush(); // 釋放圖片佔用的資源
+            // initialImage 的 flush 由 DecodedImage 的 AutoCloseable 處理
         }
     }
 
     private static boolean compressJpgWithTargetSize(BufferedImage originalImage, Path outputFile, CompressionParams params) throws IOException {
-        final float MIN_QUALITY = 0.1f;
-        final float QUALITY_STEP = 0.1f;
-        final double SCALE_STEP = 0.9; // 每次縮小 10%
+        final float QUALITY_STEP = 0.08f;
+        final double SCALE_STEP = 0.85; // 每次縮小 15%，更積極
 
         BufferedImage currentImage = originalImage;
+        try {
+            // 優先縮放，再微調品質
+            for (double scale = 1.0; scale > 0.1; scale *= SCALE_STEP) {
+                if (scale < 1.0) {
+                    log.debug("尺寸過大，縮放至 {}%", (int) (scale * 100));
+                    // 釋放上一輪的縮放圖
+                    if (currentImage != originalImage) {
+                        currentImage.flush();
+                    }
+                    currentImage = resizeImage(originalImage, scale);
+                }
 
-        for (double scale = 1.0; scale > 0.2; scale -= (1.0 - SCALE_STEP)) { // 尺寸縮小下限為原始的 20%
-            if (scale < 1.0) {
-                log.debug("圖片仍然過大，縮小尺寸至 {}%", (int) (scale * 100));
-                currentImage = resizeImage(originalImage, scale);
-            }
-
-            for (float quality = params.quality(); quality >= MIN_QUALITY; quality -= QUALITY_STEP) {
                 try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
-                    compressJpgToStream(currentImage, bos, quality);
+                    // 從一個較高的品質開始嘗試
+                    compressJpgToStream(currentImage, bos, params.quality());
                     if (bos.size() <= params.targetMaxSizeBytes()) {
-                        log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", quality), String.format("%.2f", scale));
+                        log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", params.quality()), String.format("%.2f", scale));
                         Files.write(outputFile, bos.toByteArray());
                         return true;
                     }
                 }
             }
-            if(currentImage != originalImage) {
+            // 如果最大程度縮放 + 預設品質仍然太大，則在最小尺寸下降低品質
+            log.debug("最大縮放後檔案仍然過大，嘗試在最小尺寸下降低品質...");
+            for (float quality = params.quality() - QUALITY_STEP; quality >= 0.1f; quality -= QUALITY_STEP) {
+                try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+                    compressJpgToStream(currentImage, bos, quality);
+                    if (bos.size() <= params.targetMaxSizeBytes()) {
+                        log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", quality), String.format("%.2f", 0.1));
+                        Files.write(outputFile, bos.toByteArray());
+                        return true;
+                    }
+                }
+            }
+        } finally {
+            if (currentImage != originalImage) {
                 currentImage.flush();
             }
         }
@@ -178,9 +233,7 @@ public final class ImageCompression {
     }
 
     private static void compressJpgToStream(BufferedImage image, OutputStream os, float quality) throws IOException {
-        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
-        if (!writers.hasNext()) throw new IllegalStateException("找不到 JPG 寫入器");
-        ImageWriter writer = writers.next();
+        ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
         try (ImageOutputStream ios = ImageIO.createImageOutputStream(os)) {
             writer.setOutput(ios);
             ImageWriteParam param = writer.getDefaultWriteParam();
@@ -192,55 +245,54 @@ public final class ImageCompression {
         }
     }
 
-
     private static boolean compressPngWithTargetSize(BufferedImage originalImage, Path outputFile, CompressionParams params) throws IOException {
-        final double SCALE_STEP = 0.95; // 每次縮小 5%
+        final double SCALE_STEP = 0.9; // PNG 壓縮率不高，尺寸縮減要更積極
 
-        for (double scale = 1.0; scale > 0.2; scale -= (1.0 - SCALE_STEP)) {
-            BufferedImage resizedImage = (scale == 1.0) ? originalImage : resizeImage(originalImage, scale);
-            try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
-                ImageIO.write(resizedImage, "png", bos);
-                if (bos.size() <= params.targetMaxSizeBytes()) {
-                    log.debug("找到合適尺寸: scale={}", String.format("%.2f", scale));
-                    Files.write(outputFile, bos.toByteArray());
-                    return true;
+        BufferedImage currentImage = originalImage;
+        try {
+            for (double scale = 1.0; scale > 0.1; scale *= SCALE_STEP) {
+                if (scale < 1.0) {
+                    if (currentImage != originalImage) {
+                        currentImage.flush();
+                    }
+                    currentImage = resizeImage(originalImage, scale);
                 }
-            } finally {
-                if (resizedImage != originalImage) {
-                    resizedImage.flush();
+                try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+                    ImageIO.write(currentImage, "png", bos);
+                    if (bos.size() <= params.targetMaxSizeBytes()) {
+                        log.debug("找到合適尺寸: scale={}", String.format("%.2f", scale));
+                        Files.write(outputFile, bos.toByteArray());
+                        return true;
+                    }
                 }
+            }
+        } finally {
+            if (currentImage != originalImage) {
+                currentImage.flush();
             }
         }
         return false;
     }
 
-
     private static BufferedImage resizeImage(BufferedImage originalImage, double scale) {
-        int newWidth = (int) (originalImage.getWidth() * scale);
-        int newHeight = (int) (originalImage.getHeight() * scale);
-        BufferedImage resizedImage = new BufferedImage(newWidth, newHeight, originalImage.getType() == 0 ? BufferedImage.TYPE_INT_ARGB : originalImage.getType());
+        int newWidth = Math.max(1, (int) (originalImage.getWidth() * scale));
+        int newHeight = Math.max(1, (int) (originalImage.getHeight() * scale));
+
+        // 保留 Alpha 通道
+        int imageType = originalImage.getType();
+        if (imageType == 0 || imageType == BufferedImage.TYPE_CUSTOM) {
+            imageType = originalImage.getAlphaRaster() != null ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB;
+        }
+
+        BufferedImage resizedImage = new BufferedImage(newWidth, newHeight, imageType);
         Graphics2D g2d = resizedImage.createGraphics();
+        // 使用更高品質的縮放演算法
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.drawImage(originalImage, 0, 0, newWidth, newHeight, null);
         g2d.dispose();
         return resizedImage;
-    }
-
-    private static String getImageFileType(File file) throws IOException {
-        if (file == null || !file.exists() || !file.isFile()) {
-            return null;
-        }
-        try (FileInputStream fis = new FileInputStream(file)) {
-            byte[] magicBytes = new byte[8];
-            int bytesRead = fis.read(magicBytes, 0, Math.min(magicBytes.length, (int) file.length()));
-            if (bytesRead >= 8 && magicBytes[0] == (byte) 0x89 && magicBytes[1] == (byte) 0x50 && magicBytes[2] == (byte) 0x4E && magicBytes[3] == (byte) 0x47 && magicBytes[4] == (byte) 0x0D && magicBytes[5] == (byte) 0x0A && magicBytes[6] == (byte) 0x1A && magicBytes[7] == (byte) 0x0A) {
-                return "png";
-            }
-            if (bytesRead >= 4 && magicBytes[0] == (byte) 0xFF && magicBytes[1] == (byte) 0xD8 && magicBytes[2] == (byte) 0xFF && (magicBytes[3] == (byte) 0xE0 || magicBytes[3] == (byte) 0xE1 || magicBytes[3] == (byte) 0xE8)) {
-                return "jpg";
-            }
-        }
-        return "UNKNOWN";
     }
 
     static String formatFileSize(long size) {
@@ -254,7 +306,8 @@ public final class ImageCompression {
         COMPRESSED_SUCCESS("成功壓縮"),
         SKIPPED_CONDITION_NOT_MET("不符條件跳過"),
         SKIPPED_NOT_FOUND("來源檔案不存在"),
-        FAILED_COMPRESSION("壓縮失敗"),
+        FAILED_COMPRESSION("壓縮失敗(無法達標)"),
+        FAILED_UNSUPPORTED_FORMAT("格式不支援"),
         FAILED_IO_ERROR("IO錯誤"),
         FAILED_OUT_OF_MEMORY("記憶體溢位"),
         FAILED_UNKNOWN("未知錯誤");
