@@ -1,5 +1,25 @@
 plugins {
     id 'java'
+    id 'application'
+    // 引入 shadow 外掛程式來建立 fat JAR
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+// 設定 Java 來源和目標版本
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+shadowJar {
+    archiveBaseName = 'image-compression'
+    archiveClassifier = '' // 產生的檔名將是 image-compression-1.0-SNAPSHOT.jar
+}
+
+// 應用程式的主要設定
+application {
+    // 指定包含 main 方法的主類別
+    mainClass = 'work.pollochang.compression.image.Execute'
 }
 
 group = 'work.pollochang.compression.image'
