@@ -30,7 +30,7 @@ public class Execute implements Callable<Integer> {
     @Option(names = {"-w", "--minWidth"}, defaultValue = "1920", description = "限制要壓縮的圖片長 (預設: 1920)。")
     private int minWidth;
 
-    @Option(names = {"-h", "--minHeight"}, defaultValue = "1920", description = "限制要壓縮的圖片高 (預設: 1920)。")
+    @Option(names = {"-i", "--minHeight"}, defaultValue = "1920", description = "限制要壓縮的圖片高 (預設: 1920)。")
     private int minHeight;
 
     @Option(names = {"-t", "--target-max-size"}, defaultValue = "1048576", description = "壓縮後單一檔案的目標大小上限(bytes) (預設: 1048576, 即 1MB)。")

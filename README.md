@@ -4,9 +4,36 @@
 
 ## 說明
 
+參數說明
+
+```bash
+$ java -jar image-compression-1.0-SNAPSHOT.jar -h                                                                       
+Usage: image-compressor [-hV] -f=<fileList> [-i=<minHeight>] -o=<saveDir>
+                        [-q=<quality>] [-s=<minSizeBytes>]
+                        [-t=<targetMaxSizeBytes>] [-w=<minWidth>]
+批次圖片壓縮工具
+  -f, --file-list=<fileList>
+                            包含圖片路徑的文字檔案。
+  -h, --help                Show this help message and exit.
+  -i, --minHeight=<minHeight>
+                            限制要壓縮的圖片高 (預設: 1920)。
+  -o, --output-dir=<saveDir>
+                            壓縮後圖片的儲存目錄。
+  -q, --quality=<quality>   壓縮品質，範圍從 0.0 (最低品質，檔案最小) 到 1.0 (最高品質，檔案最大) (預設: 0.25)。
+  -s, --minSize=<minSizeBytes>
+                            限制要壓縮的圖片大小 (預設: 1048576 (1MB))。
+  -t, --target-max-size=<targetMaxSizeBytes>
+                            壓縮後單一檔案的目標大小上限(bytes) (預設: 1048576,即 1MB)。
+  -V, --version             Print version information and exit.
+  -w, --minWidth=<minWidth> 限制要壓縮的圖片長 (預設: 1920)。
+```
+
+執行範例
+
 ```bash
 java -jar image-compression-1.0-SNAPSHOT.jar -f /data/tmp/resize-image/file-list.txt -o /data/tmp/resize-image/result -q 0.25
 ```
+
 
 ## 使用場境背景技術需求
 
