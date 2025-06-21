@@ -36,6 +36,17 @@ Usage: image-compressor [-hV] -f=<fileList> [-i=<minHeight>] -o=<saveDir>
 java -jar image-compression-1.0-SNAPSHOT.jar -f /data/tmp/resize-image/file-list.txt -o /data/tmp/resize-image/result -q 0.25 --timeOut 1
 ```
 
+Linux Shell
+
+```bash
+#!/bin/bash
+export JAVA_HOME=/usr/local/lib/jvm/jdk21-latest
+export PATH=$PATH:$JAVA_HOME/bin
+export JAVA_OPT="-Xms2560m -Xmx2560m -Xlog:gc*:file=./logs/gc.log:time,level,tags:filecount=5,filesize=10m -XX:+UseStringDeduplication -XX:G1HeapRegionSize=8m"
+
+java ${JAVA_OPT} -jar image-compression-1.0-SNAPSHOT.jar -f /data/tmp/resize-image/file-list.txt -o /data/tmp/resize-image/result -q 0.25 --timeOut 1
+```
+
 
 ## 使用場境背景技術需求
 
@@ -49,3 +60,15 @@ java -jar image-compression-1.0-SNAPSHOT.jar -f /data/tmp/resize-image/file-list
 6. 不使用 Thumbnails: 因為無法達到需求
 7. 在壓縮完過後統計 原先檔案總大小，壓縮過後檔案總大小，節省多硬碟空間，總共節省百分比
 
+
+## 壓縮功能
+
+### PNG
+
+僅壓縮到指定長(預設: 1920)
+
+### JPG
+
+壓縮到指定檔案大小(預設: 1MB
+
+)

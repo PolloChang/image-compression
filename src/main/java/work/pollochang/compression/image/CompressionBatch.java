@@ -34,8 +34,8 @@ public class CompressionBatch {
         FileTools.ensureDirectoryExists(outputDir);
 
         // 使用 EnumMap 和 AtomicLong 進行線程安全的計數
-        Map<ImageCompression.CompressionResult, AtomicLong> counters = new EnumMap<>(ImageCompression.CompressionResult.class);
-        for (ImageCompression.CompressionResult result : ImageCompression.CompressionResult.values()) {
+        Map<CompressionResult, AtomicLong> counters = new EnumMap<>(CompressionResult.class);
+        for (CompressionResult result : CompressionResult.values()) {
             counters.put(result, new AtomicLong(0));
         }
         AtomicLong totalFiles = new AtomicLong(0);
@@ -88,9 +88,9 @@ public class CompressionBatch {
 
         log.info("所有圖片處理完成！");
         // 使用正確的計數器產生最終報告
-        long successCount = counters.get(ImageCompression.CompressionResult.COMPRESSED_SUCCESS).get();
-        long skippedCount = counters.get(ImageCompression.CompressionResult.SKIPPED_CONDITION_NOT_MET).get()
-                + counters.get(ImageCompression.CompressionResult.SKIPPED_NOT_FOUND).get();
+        long successCount = counters.get(CompressionResult.COMPRESSED_SUCCESS).get();
+        long skippedCount = counters.get(CompressionResult.SKIPPED_CONDITION_NOT_MET).get()
+                + counters.get(CompressionResult.SKIPPED_NOT_FOUND).get();
         long failedCount = totalFiles.get() - successCount - skippedCount;
 
         log.info("處理結果 -> 總計: {}, 成功壓縮: {}, 跳過不壓縮: {}, 失敗: {}",

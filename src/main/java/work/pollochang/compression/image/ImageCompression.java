@@ -169,20 +169,17 @@ public final class ImageCompression {
 
         BufferedImage initialImage = decodedImage.image();
 
-        try {
-            switch (formatName) {
-                case "jpeg":
-                case "jpg":
-                    return compressJpgWithTargetSize(initialImage, outputFile, params);
-                case "png":
-                    return compressPngWithTargetSize(initialImage, outputFile, params);
-                default:
-                    log.warn("不支援的檔案格式: {} (來自 SPI)，跳過壓縮: {}", formatName, outputFile.getFileName());
-                    return false;
-            }
-        } finally {
-            // initialImage 的 flush 由 DecodedImage 的 AutoCloseable 處理
+        switch (formatName) {
+            case "jpeg":
+            case "jpg":
+                return compressJpgWithTargetSize(initialImage, outputFile, params);
+            case "png":
+                return compressPngWithTargetSize(initialImage, outputFile, params);
+            default:
+                log.warn("不支援的檔案格式: {} (來自 SPI)，跳過壓縮: {}", formatName, outputFile.getFileName());
+                return false;
         }
+
     }
 
     private static boolean compressJpgWithTargetSize(BufferedImage originalImage, Path outputFile, CompressionParams params) throws IOException {
@@ -245,33 +242,48 @@ public final class ImageCompression {
         }
     }
 
+    /**
+     * 處理 PNG 檔案。如果圖片尺寸超過限制，則按比例縮小至目標尺寸內，然後儲存。
+     * 只處理圖片尺寸
+     * @param originalImage 原始 BufferedImage 物件
+     * @param outputFile 壓縮後要儲存的路徑
+     * @param params 壓縮參數，主要使用 minWidth 和 minHeight
+     * @return 是否寫入成功
+     * @throws IOException IO 錯誤
+     */
     private static boolean compressPngWithTargetSize(BufferedImage originalImage, Path outputFile, CompressionParams params) throws IOException {
-        final double SCALE_STEP = 0.9; // PNG 壓縮率不高，尺寸縮減要更積極
+        int originalWidth = originalImage.getWidth();
+        int originalHeight = originalImage.getHeight();
+        int targetWidth = params.minWidth();
+        int targetHeight = params.minHeight();
 
-        BufferedImage currentImage = originalImage;
-        try {
-            for (double scale = 1.0; scale > 0.1; scale *= SCALE_STEP) {
-                if (scale < 1.0) {
-                    if (currentImage != originalImage) {
-                        currentImage.flush();
-                    }
-                    currentImage = resizeImage(originalImage, scale);
-                }
-                try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
-                    ImageIO.write(currentImage, "png", bos);
-                    if (bos.size() <= params.targetMaxSizeBytes()) {
-                        log.debug("找到合適尺寸: scale={}", String.format("%.2f", scale));
-                        Files.write(outputFile, bos.toByteArray());
-                        return true;
-                    }
-                }
-            }
-        } finally {
-            if (currentImage != originalImage) {
-                currentImage.flush();
-            }
+        // 檢查圖片是否需要縮小
+        if (originalWidth <= targetWidth && originalHeight <= targetHeight) {
+            log.info("PNG 圖片尺寸 {}x{} 未超過目標 {}x{}，直接儲存。", originalWidth, originalHeight, targetWidth, targetHeight);
+            // 如果原始尺寸已在目標範圍內，直接寫入檔案
+            return ImageIO.write(originalImage, "png", outputFile.toFile());
         }
-        return false;
+
+        // --- 計算縮放比例以維持長寬比 ---
+        // 計算寬度和高度的縮放比例
+        double widthRatio = (double) targetWidth / originalWidth;
+        double heightRatio = (double) targetHeight / originalHeight;
+
+        // 選擇較小的比例，以確保縮放後的圖片能完全放入目標框內
+        double scale = Math.min(widthRatio, heightRatio);
+
+        log.info("PNG 圖片尺寸 {}x{} 超過目標 {}x{}，將以 {} 比例縮放。", originalWidth, originalHeight, targetWidth, targetHeight, String.format("%.2f", scale));
+
+        // 使用現有的 resizeImage 方法進行縮放
+        BufferedImage resizedImage = resizeImage(originalImage, scale);
+
+        try {
+            // 將縮放後的圖片寫入檔案
+            return ImageIO.write(resizedImage, "png", outputFile.toFile());
+        } finally {
+            // 釋放由 resizeImage 產生的新圖片資源
+            resizedImage.flush();
+        }
     }
 
     private static BufferedImage resizeImage(BufferedImage originalImage, double scale) {
@@ -302,18 +314,5 @@ public final class ImageCompression {
         return new DecimalFormat("#,##0.#").format(size / Math.pow(1024, digitGroups)) + " " + units[digitGroups];
     }
 
-    public enum CompressionResult {
-        COMPRESSED_SUCCESS("成功壓縮"),
-        SKIPPED_CONDITION_NOT_MET("不符條件跳過"),
-        SKIPPED_NOT_FOUND("來源檔案不存在"),
-        FAILED_COMPRESSION("壓縮失敗(無法達標)"),
-        FAILED_UNSUPPORTED_FORMAT("格式不支援"),
-        FAILED_IO_ERROR("IO錯誤"),
-        FAILED_OUT_OF_MEMORY("記憶體溢位"),
-        FAILED_UNKNOWN("未知錯誤");
 
-        private final String description;
-        CompressionResult(String description) { this.description = description; }
-        public String getDescription() { return description; }
-    }
 }
