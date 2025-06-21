@@ -68,32 +68,32 @@ public class ImageCompression {
      */
     private boolean compressImage(File inputFile, File outputFile, float quality) throws IOException {
 
-        boolean isCompressed = false;
 
-        String fileType = getImageFileType(inputFile);
+        try {
+            String fileType = getImageFileType(inputFile);
+            // 1. 讀取來源圖片
+            BufferedImage image = ImageIO.read(inputFile);
+            log.debug("檔案類型: {}", fileType);
 
-        // 1. 讀取來源圖片
-        BufferedImage image = ImageIO.read(inputFile);
-
-        log.debug("fileType = {}",fileType);
-
-        if ( !fileType.equals("jpg") && !fileType.equals("png") ) {
-            log.warn("不支援的檔案格式: {} - {}", inputFile.getAbsolutePath() , fileType);
-            return isCompressed;
+            switch (fileType) {
+                case "jpg":
+                    compressImageJPG(image, outputFile, quality);
+                    return true;
+                case "png":
+                    resizeImagePNG(image, outputFile);
+                    return true;
+                default:
+                    log.warn("不支援的檔案格式: {}", inputFile);
+                    return false;
+            }
+        } catch (Exception e) {
+            log.error("處理檔案時發生錯誤: {}", inputFile, e);
+            return false;
         }
-
-        if (fileType.equals("jpg")){
-            compressImageJPG(image, outputFile, quality);
-            isCompressed = true;
-        } else if (fileType.equals("png")){
-            compressImagePNG(image, outputFile);
-        }
-
-        return isCompressed;
 
     }
 
-    private void compressImagePNG(BufferedImage originalImage, File outputFile) throws IOException {
+    private void resizeImagePNG(BufferedImage originalImage, File outputFile) throws IOException {
 
         log.debug("進行壓縮: PNG");
 

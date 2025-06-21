@@ -26,6 +26,9 @@ dependencies {
 
     // https://mvnrepository.com/artifact/info.picocli/picocli
     implementation("info.picocli:picocli:4.7.7")
+
+    // https://mvnrepository.com/artifact/com.twelvemonkeys.imageio/imageio-jpeg
+    implementation("com.twelvemonkeys.imageio:imageio-jpeg:3.12.0")
 }
 
 test {
