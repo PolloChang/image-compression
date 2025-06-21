@@ -33,6 +33,9 @@ public class Execute implements Callable<Integer> {
     @Option(names = {"-h", "--minHeight"}, defaultValue = "1920", description = "限制要壓縮的圖片高 (預設: 1920)。")
     private int minHeight;
 
+    @Option(names = {"-t", "--target-max-size"}, defaultValue = "1048576", description = "壓縮後單一檔案的目標大小上限(bytes) (預設: 1048576, 即 1MB)。")
+    private long targetMaxSizeBytes;
+
     @Override
     public Integer call() throws Exception {
         log.info("壓縮任務開始");
@@ -41,9 +44,16 @@ public class Execute implements Callable<Integer> {
         log.info("JPG 壓縮品質: {}", quality);
         log.info("最小壓縮尺寸: {}x{}", minWidth, minHeight);
         log.info("最小壓縮大小: {}", ImageCompression.formatFileSize(minSizeBytes));
+        log.info("目標檔案大小上限: {}", ImageCompression.formatFileSize(targetMaxSizeBytes));
 
         // 使用 record 封裝參數
-        ImageCompression.CompressionParams params = new ImageCompression.CompressionParams(quality, minSizeBytes, minWidth, minHeight);
+        ImageCompression.CompressionParams params = new ImageCompression.CompressionParams(
+                quality,
+                minSizeBytes,
+                minWidth,
+                minHeight,
+                targetMaxSizeBytes
+        );
 
         CompressionBatch compressionBatch = new CompressionBatch();
         compressionBatch.setFileListPath(fileList.getAbsolutePath());
