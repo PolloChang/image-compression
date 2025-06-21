@@ -1,17 +1,17 @@
 package work.pollochang.compression.image;
 
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
-import javax.imageio.IIOImage;
-import javax.imageio.ImageIO;
-import javax.imageio.ImageWriteParam;
-import javax.imageio.ImageWriter;
+import javax.imageio.*;
+import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.DecimalFormat;
 import java.util.Iterator;
 
 /**
@@ -21,18 +21,37 @@ import java.util.Iterator;
 public class ImageCompression {
 
 
+    @Setter
+    private Path inputPath;
+
+    @Setter
+    private Path outputDir;
+
+    @Setter
+    private float quality;
+
+    @Setter
+    private long minSizeBytes;
+
+    @Setter
+    private int minWidth;
+
+    @Setter
+    private int minHeight;
+
     /**
      * 壓縮圖片檔案
-     * @param inputPath   來源圖片檔案
-     * @param outputDir  輸出圖片檔案
-     * @param quality     壓縮品質 (0.0f 到 1.0f 之間)
      */
-    public boolean processImage(Path inputPath, Path outputDir, float quality) {
+    public boolean processImage() {
 
         boolean isCompressed = false;
 
         if (!Files.exists(inputPath)) {
             log.warn("檔案不存在，跳過處理: {}", inputPath);
+            return isCompressed;
+        }
+
+        if (!shouldCompressImage(inputPath)) {
             return isCompressed;
         }
 
@@ -55,6 +74,82 @@ public class ImageCompression {
         } finally {
             return isCompressed;
         }
+    }
+
+    /**
+     * 【新函式】檢核圖片是否需要壓縮
+     * @param inputPath 圖片路徑
+     * @return true 如果需要壓縮，否則 false
+     */
+    private boolean shouldCompressImage(Path inputPath) {
+        // 1. 檢查檔案是否存在
+        if (!Files.exists(inputPath)) {
+            log.warn("檔案不存在，跳過處理: {}", inputPath);
+            return false;
+        }
+
+        try {
+            // 2. 檢查檔案大小
+            long fileSize = Files.size(inputPath);
+            if (fileSize <= minSizeBytes) {
+                log.info("檔案大小 {} 未超過 1MB，跳過壓縮: {}", formatFileSize(fileSize), inputPath);
+                return false;
+            }
+
+            File inputFile = inputPath.toFile();
+
+            // 3. 檢查檔案類型
+            String fileType = getImageFileType(inputFile);
+            if (!"jpg".equals(fileType) && !"png".equals(fileType)) {
+                log.info("檔案類型為 {}，非 JPG 或 PNG，跳過壓縮: {}", fileType, inputPath);
+                return false;
+            }
+
+            // 4. 檢查圖片尺寸 (使用 ImageReader 高效率讀取，不需載入整個圖片)
+            try (ImageInputStream in = ImageIO.createImageInputStream(inputFile)) {
+                if (in == null) {
+                    log.warn("無法建立圖片輸入流，跳過: {}", inputPath);
+                    return false;
+                }
+
+                final Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
+                if (readers.hasNext()) {
+                    ImageReader reader = readers.next();
+                    try {
+                        reader.setInput(in);
+                        int width = reader.getWidth(0);
+                        int height = reader.getHeight(0);
+
+                        if (width <= minWidth || height <= minHeight) {
+                            log.info("圖片尺寸 {}x{} 未超過 {}x{}，跳過壓縮: {}", width, height, minWidth, minHeight, inputPath);
+                            return false;
+                        }
+                    } finally {
+                        reader.dispose();
+                    }
+                } else {
+                    log.warn("找不到對應的圖片讀取器，跳過: {}", inputPath);
+                    return false;
+                }
+            }
+
+            log.info("檔案 {} 符合所有條件，準備進行壓縮。", inputPath);
+            return true;
+
+        } catch (IOException e) {
+            log.error("檢核檔案時發生 I/O 錯誤: {}", inputPath, e);
+            return false;
+        }
+    }
+
+    /**
+     * 格式化檔案大小，方便日誌閱讀
+     */
+    private String formatFileSize(long size) {
+        if (size <= 0) return "0 B";
+        final String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
+        int digitGroups = (int) (Math.log10(size) / Math.log10(1024));
+        return new DecimalFormat("#,##0.#").format(size / Math.pow(1024, digitGroups)) + " " + units[digitGroups];
     }
 
     /**

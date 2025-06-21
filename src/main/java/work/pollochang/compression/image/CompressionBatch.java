@@ -2,6 +2,7 @@ package work.pollochang.compression.image;
 
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import picocli.CommandLine;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,6 +29,15 @@ public class CompressionBatch {
 
     @Setter
     private float quality;
+
+    @Setter
+    private long minSizeBytes;
+
+    @Setter
+    private int minWidth;
+
+    @Setter
+    private int minHeight;
 
     /**
      * 執行
@@ -67,7 +77,17 @@ public class CompressionBatch {
                 try {
                     // processImage 應返回一個布林值或透過異常來判斷成功與否
                     // 假設我們修改 processImage，讓它在成功時返回 true
-                    if (imageCompression.processImage(inputPath, outputDir, quality)) {
+
+                    imageCompression.setInputPath(inputPath);
+                    imageCompression.setOutputDir(outputDir);
+                    imageCompression.setQuality(quality);
+                    imageCompression.setMinSizeBytes(minSizeBytes);
+                    imageCompression.setMinWidth(minWidth);
+                    imageCompression.setMinHeight(minHeight);
+
+//                    if (imageCompression.processImage(inputPath, outputDir, quality)) {
+                    if (imageCompression.processImage()) {
+
                         successCompressedCount.incrementAndGet();
                     } else {
                         notCompressedCount.incrementAndGet();
