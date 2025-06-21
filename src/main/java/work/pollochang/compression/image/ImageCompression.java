@@ -26,19 +26,33 @@ public final class ImageCompression {
 
     public record CompressionParams(float quality, long minSizeBytes, int minWidth, int minHeight, long targetMaxSizeBytes) {}
 
+    /**
+     * 新增的內部 record，用於封裝壓縮結果和檔案大小資訊
+     */
+    public record CompressionReport(CompressionResult result, long originalSize, long compressedSize) {}
+
     private ImageCompression() {}
 
-    public static CompressionResult processImage(Path inputPath, Path outputDir, CompressionParams params) {
+    public static CompressionReport processImage(Path inputPath, Path outputDir, CompressionParams params) {
         if (!Files.exists(inputPath)) {
             log.warn("檔案不存在，跳過: {}", inputPath);
-            return CompressionResult.SKIPPED_NOT_FOUND;
+            return new CompressionReport(CompressionResult.SKIPPED_NOT_FOUND, 0, 0); // 檔案不存在，大小為 0
         }
+
+        long originalSize;
         try {
-            if (!shouldCompressImage(inputPath, params)) {
-                return CompressionResult.SKIPPED_CONDITION_NOT_MET;
+            originalSize = Files.size(inputPath);
+        } catch (IOException e) {
+            log.warn("無法讀取檔案大小: {}", inputPath, e);
+            return new CompressionReport(CompressionResult.FAILED_IO_ERROR, 0, 0);
+        }
+
+        try {
+            if (!shouldCompressImage(inputPath, params, originalSize)) {
+                // 不符合條件，原始大小和壓縮後大小都視為原始大小
+                return new CompressionReport(CompressionResult.SKIPPED_CONDITION_NOT_MET, originalSize, originalSize);
             }
 
-            long originalSize = Files.size(inputPath);
             Path outputFile = outputDir.resolve(inputPath.getFileName());
 
             log.info("開始處理: {}", inputPath);
@@ -50,25 +64,24 @@ public final class ImageCompression {
                 log.info("處理成功: {} -> {} (大小: {} -> {}, 節省: {:.2f}%)",
                         inputPath.getFileName(), outputFile.getFileName(),
                         formatFileSize(originalSize), formatFileSize(compressedSize), ratio);
-                return CompressionResult.COMPRESSED_SUCCESS;
+                return new CompressionReport(CompressionResult.COMPRESSED_SUCCESS, originalSize, compressedSize);
             } else {
                 log.warn("無法在目標大小限制下完成壓縮: {}", inputPath);
-                return CompressionResult.FAILED_COMPRESSION;
+                return new CompressionReport(CompressionResult.FAILED_COMPRESSION, originalSize, 0);
             }
         } catch (IOException e) {
             log.warn("處理圖片時發生 I/O 錯誤 (可能非支援格式或檔案損毀): {}", inputPath, e);
-            return CompressionResult.FAILED_IO_ERROR;
+            return new CompressionReport(CompressionResult.FAILED_IO_ERROR, originalSize, 0);
         } catch (OutOfMemoryError e) {
             log.error("處理檔案時發生記憶體溢位錯誤 (圖片可能過大): {}", inputPath, e);
-            return CompressionResult.FAILED_OUT_OF_MEMORY;
+            return new CompressionReport(CompressionResult.FAILED_OUT_OF_MEMORY, originalSize, 0);
         } catch (Exception e) {
             log.error("處理檔案時發生未知錯誤: {}", inputPath, e);
-            return CompressionResult.FAILED_UNKNOWN;
+            return new CompressionReport(CompressionResult.FAILED_UNKNOWN, originalSize, 0);
         }
     }
 
-    private static boolean shouldCompressImage(Path inputPath, CompressionParams params) throws IOException {
-        long fileSize = Files.size(inputPath);
+    private static boolean shouldCompressImage(Path inputPath, CompressionParams params, long fileSize) throws IOException {
         if (fileSize <= params.minSizeBytes()) {
             log.info("檔案大小 {} 未超過最小壓縮門檻 {}，跳過: {}", formatFileSize(fileSize), formatFileSize(params.minSizeBytes()), inputPath);
             return false;

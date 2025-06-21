@@ -38,6 +38,10 @@ public class CompressionBatch {
             counters.put(result, new AtomicLong(0));
         }
         AtomicLong totalFiles = new AtomicLong(0);
+        // 新增: 用於統計總檔案大小的原子變數
+        AtomicLong totalOriginalSize = new AtomicLong(0);
+        AtomicLong totalCompressedSize = new AtomicLong(0);
+
 
         // 使用執行緒池平行處理
         int threads = Runtime.getRuntime().availableProcessors();
@@ -51,8 +55,15 @@ public class CompressionBatch {
                     totalFiles.incrementAndGet();
                     Path inputPath = Paths.get(line.trim());
                     executor.submit(() -> {
-                        ImageCompression.CompressionResult result = ImageCompression.processImage(inputPath, outputDir, compressionParams);
-                        counters.get(result).incrementAndGet();
+                        // 接收 CompressionReport 而不是 CompressionResult
+                        ImageCompression.CompressionReport report = ImageCompression.processImage(inputPath, outputDir, compressionParams);
+
+                        // 更新計數器
+                        counters.get(report.result()).incrementAndGet();
+
+                        // 累加檔案大小
+                        totalOriginalSize.addAndGet(report.originalSize());
+                        totalCompressedSize.addAndGet(report.compressedSize());
                     });
                 }
             });
@@ -88,5 +99,18 @@ public class CompressionBatch {
                 successCount,
                 skippedCount,
                 failedCount);
+
+        // 新增的最終統計報告
+        long finalOriginalSize = totalOriginalSize.get();
+        long finalCompressedSize = totalCompressedSize.get();
+        long savedSpace = finalOriginalSize - finalCompressedSize;
+        double savedPercentage = (finalOriginalSize == 0) ? 0.0 : (double) savedSpace / finalOriginalSize * 100.0;
+
+        log.info("========================================空間統計報告========================================");
+        log.info(" 原始檔案總大小: {}", ImageCompression.formatFileSize(finalOriginalSize));
+        log.info(" 壓縮後檔案總大小: {}", ImageCompression.formatFileSize(finalCompressedSize));
+        log.info(" 共節省硬碟空間: {}", ImageCompression.formatFileSize(savedSpace));
+        log.info(" 總空間節省百分比: {} %", savedPercentage);
+        log.info("========================================空間統計報告========================================");
     }
 }
