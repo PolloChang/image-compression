@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
 /**
- * 進行批次壓縮 (使用傳統的 FixedThreadPool)
+ * 進行批次壓縮
  */
 @Setter
 @Slf4j
@@ -42,49 +42,47 @@ public class CompressionBatch {
         AtomicLong totalOriginalSize = new AtomicLong(0);
         AtomicLong totalCompressedSize = new AtomicLong(0);
 
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            log.info("初始化虛擬執行緒執行器，將為每個檔案處理任務建立一個虛擬執行緒。");
 
-        // 使用執行緒池平行處理
-        int threads = Runtime.getRuntime().availableProcessors();
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
-        log.info("初始化執行緒池，使用 {} 個執行緒。", threads);
+            // 使用 Stream API 逐行讀取檔案，避免一次性將整個列表載入記憶體
+            try (Stream<String> lines = Files.lines(inputListFile)) {
+                lines.forEach(line -> {
+                    if (line != null && !line.trim().isEmpty()) {
+                        totalFiles.incrementAndGet();
+                        Path inputPath = Paths.get(line.trim());
+                        executor.submit(() -> {
+                            // 接收 CompressionReport 而不是 CompressionResult
+                            ImageCompression.CompressionReport report = ImageCompression.processImage(inputPath, outputDir, compressionParams);
 
-        // 使用 Stream API 逐行讀取檔案，避免一次性將整個列表載入記憶體
-        try (Stream<String> lines = Files.lines(inputListFile)) {
-            lines.forEach(line -> {
-                if (line != null && !line.trim().isEmpty()) {
-                    totalFiles.incrementAndGet();
-                    Path inputPath = Paths.get(line.trim());
-                    executor.submit(() -> {
-                        // 接收 CompressionReport 而不是 CompressionResult
-                        ImageCompression.CompressionReport report = ImageCompression.processImage(inputPath, outputDir, compressionParams);
+                            // 更新計數器
+                            counters.get(report.result()).incrementAndGet();
 
-                        // 更新計數器
-                        counters.get(report.result()).incrementAndGet();
-
-                        // 累加檔案大小
-                        totalOriginalSize.addAndGet(report.originalSize());
-                        totalCompressedSize.addAndGet(report.compressedSize());
-                    });
-                }
-            });
-        } catch (IOException e) {
-            log.error("讀取檔案列表失敗: {}", fileListPath, e);
-            return;
-        }
-
-        log.info("所有任務已提交，等待處理完成...");
-        executor.shutdown();
-
-        try {
-            // 等待所有任務完成，最多等待數小時
-            if (!executor.awaitTermination(24, TimeUnit.HOURS)) {
-                log.warn("執行緒池等待逾時，部分任務可能未完成。");
-                executor.shutdownNow();
+                            // 累加檔案大小
+                            totalOriginalSize.addAndGet(report.originalSize());
+                            totalCompressedSize.addAndGet(report.compressedSize());
+                        });
+                    }
+                });
+            } catch (IOException e) {
+                log.error("讀取檔案列表失敗: {}", fileListPath, e);
+                return;
             }
-        } catch (InterruptedException e) {
-            log.error("執行緒池被中斷。", e);
-            executor.shutdownNow();
-            Thread.currentThread().interrupt(); // 恢復中斷狀態
+
+            log.info("所有任務已提交，等待處理完成...");
+            executor.shutdown();
+
+            try {
+                // 等待所有任務完成，最多等待數小時
+                if (!executor.awaitTermination(24, TimeUnit.HOURS)) {
+                    log.warn("執行緒池等待逾時，部分任務可能未完成。");
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                log.error("執行緒池被中斷。", e);
+                executor.shutdownNow();
+                Thread.currentThread().interrupt(); // 恢復中斷狀態
+            }
         }
 
         log.info("所有圖片處理完成！");
