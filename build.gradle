@@ -26,6 +26,9 @@ dependencies {
 
     // https://mvnrepository.com/artifact/net.coobird/thumbnailator
     implementation("net.coobird:thumbnailator:0.4.20")
+
+    // https://mvnrepository.com/artifact/info.picocli/picocli
+    implementation("info.picocli:picocli:4.7.7")
 }
 
 test {
@@ -33,7 +36,23 @@ test {
 }
 
 task runDev(type: JavaExec) {
-    classpath sourceSets.main.runtimeClasspath
-    mainClass = 'work.pollochang.compression.image.Execute' // 您的 main 類別
-    systemProperties 'logback.configurationFile': 'logback-dev.xml' // 透過 JVM 系統屬性告訴 Logback 使用 logback-dev.xml
+    // 將任務分組，方便在 Gradle Tasks 視窗中尋找
+    group = "application"
+    description = "使用開發環境的日誌設定 (logback-dev.xml) 來執行應用程式。"
+
+    // 設定執行的 classpath，包含編譯後的 class 和所有依賴
+    classpath = sourceSets.main.runtimeClasspath
+
+    // 指定您的主類別
+    mainClass = 'work.pollochang.compression.image.Execute'
+
+    // 透過 JVM 系統屬性告訴 Logback 使用 logback-dev.xml
+    // 使用 file() 方法來確保路徑是相對於專案根目錄，更為穩健
+    systemProperty 'logback.configurationFile', file('src/main/resources/logback-dev.xml').absolutePath
+
+    // 這裡是傳遞給您 picocli 應用程式的命令列參數
+    // 請務必修改為您自己的路徑
+    args '--file-list', '/data/tmp/resize-image/file-list.txt',
+            '--output-dir', '/data/tmp/resize-image/result',
+            '--quality', '0.25'
 }
