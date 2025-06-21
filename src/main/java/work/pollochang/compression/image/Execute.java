@@ -36,8 +36,13 @@ public class Execute implements Callable<Integer> {
     @Option(names = {"-t", "--target-max-size"}, defaultValue = "1048576", description = "壓縮後單一檔案的目標大小上限(bytes) (預設: 1048576, 即 1MB)。")
     private long targetMaxSizeBytes;
 
+    @Option(names = {"--timeOut"}, defaultValue = "24", description = "設定執行時間超時(小時) (預設: 24 小時)。")
+    private long timeOutHr;
+
     @Override
     public Integer call() throws Exception {
+
+        log.info("========================================壓縮程式參數設定========================================");
         log.info("壓縮任務開始");
         log.info("來源列表: {}", fileList.getAbsolutePath());
         log.info("輸出目錄: {}", saveDir.getAbsolutePath());
@@ -45,6 +50,9 @@ public class Execute implements Callable<Integer> {
         log.info("最小壓縮尺寸: {}x{}", minWidth, minHeight);
         log.info("最小壓縮大小: {}", ImageCompression.formatFileSize(minSizeBytes));
         log.info("目標檔案大小上限: {}", ImageCompression.formatFileSize(targetMaxSizeBytes));
+        log.info("設定超時執行時間: {} 小時", timeOutHr);
+        log.info("========================================壓縮程式參數設定========================================");
+
 
         // 使用 record 封裝參數
         ImageCompression.CompressionParams params = new ImageCompression.CompressionParams(
@@ -59,6 +67,7 @@ public class Execute implements Callable<Integer> {
         compressionBatch.setFileListPath(fileList.getAbsolutePath());
         compressionBatch.setSaveDir(saveDir.getAbsolutePath());
         compressionBatch.setCompressionParams(params);
+        compressionBatch.setTimeOutHr(timeOutHr);
         compressionBatch.execute();
 
         log.info("所有任務執行完畢");

@@ -25,6 +25,7 @@ public class CompressionBatch {
     private String fileListPath;
     private String saveDir;
     private ImageCompression.CompressionParams compressionParams;
+    private long timeOutHr;
 
     public void execute() {
         Path outputDir = Paths.get(saveDir);
@@ -74,7 +75,7 @@ public class CompressionBatch {
 
             try {
                 // 等待所有任務完成，最多等待數小時
-                if (!executor.awaitTermination(24, TimeUnit.HOURS)) {
+                if (!executor.awaitTermination(timeOutHr, TimeUnit.HOURS)) {
                     log.warn("執行緒池等待逾時，部分任務可能未完成。");
                     executor.shutdownNow();
                 }

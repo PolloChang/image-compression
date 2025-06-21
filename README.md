@@ -10,7 +10,8 @@
 $ java -jar image-compression-1.0-SNAPSHOT.jar -h                                                                       
 Usage: image-compressor [-hV] -f=<fileList> [-i=<minHeight>] -o=<saveDir>
                         [-q=<quality>] [-s=<minSizeBytes>]
-                        [-t=<targetMaxSizeBytes>] [-w=<minWidth>]
+                        [-t=<targetMaxSizeBytes>] [--timeOut=<timeOutHr>]
+                        [-w=<minWidth>]
 批次圖片壓縮工具
   -f, --file-list=<fileList>
                             包含圖片路徑的文字檔案。
@@ -24,6 +25,7 @@ Usage: image-compressor [-hV] -f=<fileList> [-i=<minHeight>] -o=<saveDir>
                             限制要壓縮的圖片大小 (預設: 1048576 (1MB))。
   -t, --target-max-size=<targetMaxSizeBytes>
                             壓縮後單一檔案的目標大小上限(bytes) (預設: 1048576,即 1MB)。
+      --timeOut=<timeOutHr> 設定執行時間超時(小時) (預設: 24 小時)。
   -V, --version             Print version information and exit.
   -w, --minWidth=<minWidth> 限制要壓縮的圖片長 (預設: 1920)。
 ```
@@ -31,7 +33,7 @@ Usage: image-compressor [-hV] -f=<fileList> [-i=<minHeight>] -o=<saveDir>
 執行範例
 
 ```bash
-java -jar image-compression-1.0-SNAPSHOT.jar -f /data/tmp/resize-image/file-list.txt -o /data/tmp/resize-image/result -q 0.25
+java -jar image-compression-1.0-SNAPSHOT.jar -f /data/tmp/resize-image/file-list.txt -o /data/tmp/resize-image/result -q 0.25 --timeOut 1
 ```
 
 
