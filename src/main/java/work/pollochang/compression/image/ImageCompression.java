@@ -183,49 +183,59 @@ public final class ImageCompression {
     }
 
     private static boolean compressJpgWithTargetSize(BufferedImage originalImage, Path outputFile, CompressionParams params) throws IOException {
-        final float QUALITY_STEP = 0.08f;
-        final double SCALE_STEP = 0.85; // 每次縮小 15%，更積極
+        final float QUALITY_STEP = 0.1f;
+        final double SCALE_STEP = 0.85;
 
         BufferedImage currentImage = originalImage;
-        try {
-            // 優先縮放，再微調品質
-            for (double scale = 1.0; scale > 0.1; scale *= SCALE_STEP) {
-                if (scale < 1.0) {
-                    log.debug("尺寸過大，縮放至 {}%", (int) (scale * 100));
-                    // 釋放上一輪的縮放圖
-                    if (currentImage != originalImage) {
-                        currentImage.flush();
-                    }
-                    currentImage = resizeImage(originalImage, scale);
-                }
+        // 為了避免重複創建和銷毀，只在需要時才縮放
+        boolean isOriginal = true;
 
+        try {
+            // 從目前的圖片尺寸開始，由高品質往低品質嘗試
+            for (float quality = params.quality(); quality >= 0.1f; quality -= QUALITY_STEP) {
                 try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
-                    // 從一個較高的品質開始嘗試
-                    compressJpgToStream(currentImage, bos, params.quality());
+                    compressJpgToStream(currentImage, bos, quality);
                     if (bos.size() <= params.targetMaxSizeBytes()) {
-                        log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", params.quality()), String.format("%.2f", scale));
+                        log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", quality), "1.0 (current size)");
                         Files.write(outputFile, bos.toByteArray());
                         return true;
                     }
                 }
             }
-            // 如果最大程度縮放 + 預設品質仍然太大，則在最小尺寸下降低品質
-            log.debug("最大縮放後檔案仍然過大，嘗試在最小尺寸下降低品質...");
-            for (float quality = params.quality() - QUALITY_STEP; quality >= 0.1f; quality -= QUALITY_STEP) {
-                try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
-                    compressJpgToStream(currentImage, bos, quality);
-                    if (bos.size() <= params.targetMaxSizeBytes()) {
-                        log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", quality), String.format("%.2f", 0.1));
-                        Files.write(outputFile, bos.toByteArray());
-                        return true;
+
+            // 如果最高品質的嘗試仍然失敗，開始縮放圖片
+            // 外部迴圈改為縮放，內部迴圈調整品質
+            for (double scale = SCALE_STEP; scale > 0.1; scale *= SCALE_STEP) {
+
+                // 釋放上一輪的縮放圖
+                if (!isOriginal) {
+                    currentImage.flush();
+                }
+                currentImage = resizeImage(originalImage, scale);
+                isOriginal = false; // 標記 currentImage 已經是一個縮放後的副本
+
+                log.debug("檔案仍然過大，縮放至 {}%", (int) (scale * 100));
+
+                // 在新的尺寸下，再次從高到低嘗試品質
+                for (float quality = params.quality(); quality >= 0.1f; quality -= QUALITY_STEP) {
+                    try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+                        compressJpgToStream(currentImage, bos, quality);
+                        if (bos.size() <= params.targetMaxSizeBytes()) {
+                            log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", quality), String.format("%.2f", scale));
+                            Files.write(outputFile, bos.toByteArray());
+                            return true;
+                        }
                     }
                 }
             }
         } finally {
-            if (currentImage != originalImage) {
+            // 只有當 currentImage 不是原始圖片時才 flush，避免重複 flush
+            if (!isOriginal && currentImage != null) {
                 currentImage.flush();
             }
         }
+
+        log.warn("無法在目標大小限制下完成壓縮: {}", outputFile.getFileName());
         return false;
     }
 
