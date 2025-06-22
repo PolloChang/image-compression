@@ -41,8 +41,9 @@ public class Execute implements Callable<Integer> {
     @Option(names = {"--timeOut"}, defaultValue = "24", description = "設定執行時間超時(小時) (預設: 24 小時)。")
     private long timeOutHr;
 
-    @Option(names = {"--cache-file"}, defaultValue = "image-compression.catch", description = "用來讀取和儲存學習快取的檔案路徑。")
-    private File cacheFile;
+    // 【新增】加入 H2 資料庫路徑的新選項
+    @Option(names = {"--cache-db"}, defaultValue = "image-compression-cache", description = "H2 學習快取資料庫的檔案路徑。")
+    private File h2DbFile;
 
     @Override
     public Integer call() throws Exception {
@@ -56,7 +57,7 @@ public class Execute implements Callable<Integer> {
         log.info("最小壓縮大小: {}", FileTools.formatFileSize(minSizeBytes));
         log.info("目標檔案大小上限: {}", FileTools.formatFileSize(targetMaxSizeBytes));
         log.info("設定超時執行時間: {} 小時", timeOutHr);
-        log.info("學習快取檔案: {}", cacheFile.getAbsolutePath());
+        log.info("學習快取資料庫: {}", h2DbFile.getAbsolutePath());
         log.info("========================================壓縮程式參數設定========================================");
 
 
@@ -74,7 +75,7 @@ public class Execute implements Callable<Integer> {
         compressionBatch.setSaveDir(saveDir.getAbsolutePath());
         compressionBatch.setCompressionParams(params);
         compressionBatch.setTimeOutHr(timeOutHr);
-        compressionBatch.setCachePath(cacheFile.toPath());
+        compressionBatch.setH2CachePath(h2DbFile.toPath());
         compressionBatch.execute();
 
         log.info("所有任務執行完畢");
