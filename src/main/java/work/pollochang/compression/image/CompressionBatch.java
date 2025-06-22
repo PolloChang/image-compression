@@ -43,8 +43,12 @@ public class CompressionBatch {
         AtomicLong totalOriginalSize = new AtomicLong(0);
         AtomicLong totalCompressedSize = new AtomicLong(0);
 
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        int coreCount = Math.max(1, Runtime.getRuntime().availableProcessors());
+        log.info("偵測到 {} 個 CPU 核心，建立固定大小為 {} 的執行緒池。", coreCount, coreCount);
+        try (ExecutorService executor = Executors.newFixedThreadPool(coreCount)) {
+            log.info("初始化固定大小執行緒執行器，將以 {} 的併發數量處理任務。", coreCount);
             log.info("初始化虛擬執行緒執行器，將為每個檔案處理任務建立一個虛擬執行緒。");
+
 
             // 使用 Stream API 逐行讀取檔案，避免一次性將整個列表載入記憶體
             try (Stream<String> lines = Files.lines(inputListFile)) {
