@@ -52,12 +52,12 @@ public final class ImageCompression {
         long originalSize;
         try {
             if (!Files.exists(inputPath) || !Files.isReadable(inputPath)) {
-                log.warn("檔案不存在或不可讀，跳過: {}", inputPath);
+                log.warn("{} - 檔案不存在或不可讀，跳過", inputPath);
                 return new CompressionReport(CompressionResult.SKIPPED_NOT_FOUND, 0, 0);
             }
             originalSize = Files.size(inputPath);
         } catch (IOException e) {
-            log.warn("無法讀取檔案大小: {}", inputPath, e);
+            log.warn("{} - 無法讀取檔案大小", inputPath, e);
             return new CompressionReport(CompressionResult.FAILED_IO_ERROR, 0, 0);
         }
 
@@ -73,51 +73,51 @@ public final class ImageCompression {
             }
 
             Path outputFile = outputDir.resolve(inputPath.getFileName());
-            log.info("開始處理: {}", inputPath);
+            log.debug("{} - 開始處理", inputPath);
 
             boolean success = compressImageIteratively(decodedImage, outputFile, params);
 
             if (success) {
                 long compressedSize = Files.size(outputFile);
                 double ratio = 100.0 * (originalSize - compressedSize) / originalSize;
-                log.info("處理成功: {} -> {} (大小: {} -> {}, 節省: {}%)",
-                        inputPath.getFileName(), outputFile.getFileName(),
+                log.info("{} - 處理成功 -> {} (大小: {} -> {}, 節省: {}%)",
+                        inputPath, outputFile,
                         formatFileSize(originalSize), formatFileSize(compressedSize), ratio);
                 return new CompressionReport(CompressionResult.COMPRESSED_SUCCESS, originalSize, compressedSize);
             } else {
-                log.warn("無法在目標大小限制下完成壓縮: {}", inputPath);
+                log.warn("{} - 無法在目標大小限制下完成壓縮", inputPath);
                 // 即使壓縮失敗，也應該清除可能已建立的空檔案或不完整檔案
                 Files.deleteIfExists(outputFile);
                 return new CompressionReport(CompressionResult.FAILED_COMPRESSION, originalSize, 0);
             }
         } catch (IOException e) {
-            log.warn("處理圖片時發生 I/O 錯誤 (可能非支援格式或檔案損毀): {}", inputPath, e);
+            log.warn("{} - 處理圖片時發生 I/O 錯誤 (可能非支援格式或檔案損毀)", inputPath, e);
             return new CompressionReport(CompressionResult.FAILED_IO_ERROR, originalSize, 0);
         } catch (OutOfMemoryError e) {
             // 儘管已經做了二次取樣，極端情況下仍可能發生。
-            log.error("處理檔案時發生記憶體溢位錯誤 (圖片可能過大或格式有問題): {}", inputPath, e);
+            log.error("{} - 處理檔案時發生記憶體溢位錯誤 (圖片可能過大或格式有問題)", inputPath, e);
             return new CompressionReport(CompressionResult.FAILED_OUT_OF_MEMORY, originalSize, 0);
         } catch (Exception e) {
-            log.error("處理檔案時發生未知錯誤: {}", inputPath, e);
+            log.error("{} - 處理檔案時發生未知錯誤", inputPath, e);
             return new CompressionReport(CompressionResult.FAILED_UNKNOWN, originalSize, 0);
         }
     }
 
     private static DecodedImage decodeImageWithSubsampling(Path inputPath, CompressionParams params, long fileSize) throws IOException {
         if (fileSize <= params.minSizeBytes()) {
-            log.info("檔案大小 {} 未超過最小壓縮門檻 {}，跳過: {}", formatFileSize(fileSize), formatFileSize(params.minSizeBytes()), inputPath);
+            log.info("{} - 跳過: 檔案大小 {} 未超過最小壓縮門檻 {}", inputPath, formatFileSize(fileSize), formatFileSize(params.minSizeBytes()));
             return null;
         }
 
         try (ImageInputStream in = ImageIO.createImageInputStream(Files.newInputStream(inputPath))) {
             if (in == null) {
-                log.warn("無法建立圖片輸入流，跳過: {}", inputPath);
+                log.warn("{} - 無法建立圖片輸入流，跳過", inputPath);
                 return null;
             }
 
             Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
             if (!readers.hasNext()) {
-                log.warn("找不到對應的圖片讀取器，跳過: {}", inputPath);
+                log.warn("{} - 找不到對應的圖片讀取器，跳過", inputPath);
                 return null;
             }
 
@@ -128,7 +128,7 @@ public final class ImageCompression {
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
                 if (width <= params.minWidth() || height <= params.minHeight()) {
-                    log.info("圖片尺寸 {}x{} 未超過最小壓縮門檻 {}x{}，跳過: {}", width, height, params.minWidth(), params.minHeight(), inputPath);
+                    log.debug("{} - 跳過: 圖片尺寸 {}x{} 未超過最小壓縮門檻 {}x{}", inputPath, width, height, params.minWidth(), params.minHeight());
                     reader.dispose();
                     return null;
                 }
@@ -147,7 +147,7 @@ public final class ImageCompression {
                 if (subsampling > 1) {
                     // 確保取樣率是 2 的冪，對某些 JPG 解碼器更友好
                     subsampling = Integer.highestOneBit(subsampling);
-                    log.debug("對圖片 {} 應用二次取樣，比率: {}", inputPath.getFileName(), subsampling);
+                    log.debug("{} - 對圖片應用二次取樣，比率: {}", inputPath.getFileName(), subsampling);
                     param.setSourceSubsampling(subsampling, subsampling, 0, 0);
                 }
 

@@ -17,13 +17,13 @@ public class FileTools {
         if (!Files.exists(directoryPath)) {
             try {
                 Files.createDirectories(directoryPath);
-                log.info("目標目錄已建立: {}", directoryPath);
+                log.info("{} - 目標目錄已建立", directoryPath);
             } catch (IOException e) {
                 // 拋出 RuntimeException 使上層能夠捕獲並中止程式
                 throw new RuntimeException("無法建立目錄: " + directoryPath, e);
             }
         } else {
-            log.debug("目標目錄已存在: {}", directoryPath);
+            log.debug("{} - 目標目錄已存在", directoryPath);
         }
     }
 }
