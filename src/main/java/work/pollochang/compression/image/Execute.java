@@ -4,6 +4,8 @@ import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import work.pollochang.compression.image.report.CompressionParams;
+import work.pollochang.compression.image.tools.FileTools;
 
 import java.io.File;
 import java.util.concurrent.Callable;
@@ -51,15 +53,15 @@ public class Execute implements Callable<Integer> {
         log.info("輸出目錄: {}", saveDir.getAbsolutePath());
         log.info("JPG 壓縮品質: {}", quality);
         log.info("最小壓縮尺寸: {}x{}", minWidth, minHeight);
-        log.info("最小壓縮大小: {}", ImageCompression.formatFileSize(minSizeBytes));
-        log.info("目標檔案大小上限: {}", ImageCompression.formatFileSize(targetMaxSizeBytes));
+        log.info("最小壓縮大小: {}", FileTools.formatFileSize(minSizeBytes));
+        log.info("目標檔案大小上限: {}", FileTools.formatFileSize(targetMaxSizeBytes));
         log.info("設定超時執行時間: {} 小時", timeOutHr);
         log.info("學習快取檔案: {}", cacheFile.getAbsolutePath());
         log.info("========================================壓縮程式參數設定========================================");
 
 
         // 使用 record 封裝參數
-        ImageCompression.CompressionParams params = new ImageCompression.CompressionParams(
+        CompressionParams params = new CompressionParams(
                 quality,
                 minSizeBytes,
                 minWidth,

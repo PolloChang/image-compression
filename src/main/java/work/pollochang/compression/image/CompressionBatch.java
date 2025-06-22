@@ -1,14 +1,15 @@
 package work.pollochang.compression.image;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.module.SimpleModule;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import work.pollochang.compression.image.core.CompressionResult;
+import work.pollochang.compression.image.core.ImageCompression;
+import work.pollochang.compression.image.learn.Learn;
 import work.pollochang.compression.image.learn.LearnedParams;
 import work.pollochang.compression.image.learn.jpg.SimilarityKey;
-import work.pollochang.compression.image.learn.jpg.SimilarityKeyDeserializer;
+import work.pollochang.compression.image.report.CompressionParams;
+import work.pollochang.compression.image.report.CompressionReport;
+import work.pollochang.compression.image.tools.FileTools;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,9 +33,12 @@ public class CompressionBatch {
 
     private String fileListPath;
     private String saveDir;
-    private ImageCompression.CompressionParams compressionParams;
+    private CompressionParams compressionParams;
     private long timeOutHr;
     private Path cachePath;
+    private Learn learn = new Learn();
+
+
 
     public void execute() {
         Path outputDir = Paths.get(saveDir);
@@ -43,13 +47,8 @@ public class CompressionBatch {
         FileTools.ensureDirectoryExists(outputDir);
 
         // 建立一個執行緒安全的共用快取
-        final Map<SimilarityKey, LearnedParams> compressionCache;
-        if (cachePath != null) {
-            compressionCache = loadCacheFromFile(cachePath);
-        } else {
-            log.info("未指定快取檔案，將使用空的記憶體快取。");
-            compressionCache = new ConcurrentHashMap<>();
-        }
+        final Map<SimilarityKey, LearnedParams> compressionCache = createLoadCache();
+
 
         log.info("初始化壓縮參數學習快取。");
 
@@ -65,9 +64,9 @@ public class CompressionBatch {
 
         int coreCount = Math.max(1, Runtime.getRuntime().availableProcessors());
         log.info("偵測到 {} 個 CPU 核心，建立固定大小為 {} 的執行緒池。", coreCount, coreCount);
+
         try (ExecutorService executor = Executors.newFixedThreadPool(coreCount)) {
             log.info("初始化固定大小執行緒執行器，將以 {} 的併發數量處理任務。", coreCount);
-            log.info("初始化虛擬執行緒執行器，將為每個檔案處理任務建立一個虛擬執行緒。");
 
 
             // 使用 Stream API 逐行讀取檔案，避免一次性將整個列表載入記憶體
@@ -78,7 +77,7 @@ public class CompressionBatch {
                         Path inputPath = Paths.get(line.trim());
                         executor.submit(() -> {
                             // 接收 CompressionReport 而不是 CompressionResult
-                            ImageCompression.CompressionReport report = ImageCompression.processImage(
+                            CompressionReport report = ImageCompression.processImage(
                                     inputPath,
                                     outputDir,
                                     compressionParams,
@@ -118,7 +117,7 @@ public class CompressionBatch {
 
         // 在所有任務結束後，儲存快取
         if (cachePath != null) {
-            saveCacheToFile(cachePath, compressionCache);
+            learn.saveCacheToFile(cachePath, compressionCache);
         }
 
         log.info("所有圖片處理完成！");
@@ -141,64 +140,27 @@ public class CompressionBatch {
         double savedPercentage = (finalOriginalSize == 0) ? 0.0 : (double) savedSpace / finalOriginalSize * 100.0;
 
         log.info("========================================空間統計報告========================================");
-        log.info(" 原始檔案總大小: {}", ImageCompression.formatFileSize(finalOriginalSize));
-        log.info(" 壓縮後檔案總大小: {}", ImageCompression.formatFileSize(finalCompressedSize));
-        log.info(" 共節省硬碟空間: {}", ImageCompression.formatFileSize(savedSpace));
+        log.info(" 原始檔案總大小: {}", FileTools.formatFileSize(finalOriginalSize));
+        log.info(" 壓縮後檔案總大小: {}", FileTools.formatFileSize(finalCompressedSize));
+        log.info(" 共節省硬碟空間: {}", FileTools.formatFileSize(savedSpace));
         log.info(" 總空間節省百分比: {} %", savedPercentage);
         log.info("========================================空間統計報告========================================");
     }
 
     /**
-     * 從指定的 JSON 檔案讀取並還原快取。
-     * @param path 快取檔案的路徑
-     * @return 一個 ConcurrentHashMap，如果檔案不存在或讀取失敗則為空。
+     * 建立快取
+     * @return 快取
      */
-    private Map<SimilarityKey, LearnedParams> loadCacheFromFile(Path path) {
-        if (Files.exists(path)) {
-            ObjectMapper mapper = new ObjectMapper();
-
-            // 1. 建立一個模組
-            SimpleModule module = new SimpleModule();
-            // 2. 告訴模組，當遇到需要將 key 轉成 SimilarityKey 的情況時，請使用我們自訂的 Deserializer
-            module.addKeyDeserializer(SimilarityKey.class, new SimilarityKeyDeserializer());
-            // 3. 將這個模組註冊到 ObjectMapper 中
-            mapper.registerModule(module);
-
-            try {
-                // 使用 TypeReference 來讓 Jackson 知道要轉換成的複雜 Map 型別
-                Map<SimilarityKey, LearnedParams> loadedMap = mapper.readValue(path.toFile(), new TypeReference<>() {});
-                log.info("成功從 {} 讀取 {} 筆學習快取紀錄。", path, loadedMap.size());
-                // 返回一個 ConcurrentHashMap 以確保執行緒安全
-                return new ConcurrentHashMap<>(loadedMap);
-            } catch (IOException e) {
-                log.warn("讀取快取檔案 {} 失敗，將使用新的空快取。", path, e);
-            }
+    private Map<SimilarityKey, LearnedParams> createLoadCache(){
+        Map<SimilarityKey, LearnedParams> compressionCache;
+        if (cachePath != null) {
+            compressionCache = learn.loadCacheFromFile(cachePath);
         } else {
-            log.info("快取檔案 {} 不存在，將建立新的空快取。", path);
+            log.info("未指定快取檔案，將使用空的記憶體快取。");
+            compressionCache = new ConcurrentHashMap<>();
         }
-        return new ConcurrentHashMap<>();
+
+        return compressionCache;
     }
 
-    /**
-     * 將記憶體中的快取儲存到指定的 JSON 檔案。
-     * @param path 快取檔案的路徑
-     * @param cache 要儲存的快取 Map
-     */
-    private void saveCacheToFile(Path path, Map<SimilarityKey, LearnedParams> cache) {
-        if (cache == null || cache.isEmpty()) {
-            log.info("快取為空，無需儲存。");
-            return;
-        }
-
-        ObjectMapper mapper = new ObjectMapper();
-        //mapper.enable(SerializationFeature.INDENT_OUTPUT); // 讓 JSON 格式化，方便閱讀
-
-        try {
-            log.info("正在將 {} 筆快取紀錄儲存至 {} ...", cache.size(), path);
-            mapper.writeValue(path.toFile(), cache);
-            log.info("快取成功儲存。");
-        } catch (IOException e) {
-            log.error("儲存快取至檔案 {} 時發生錯誤。", path, e);
-        }
-    }
 }

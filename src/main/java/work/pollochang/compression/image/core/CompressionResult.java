@@ -1,4 +1,4 @@
-package work.pollochang.compression.image;
+package work.pollochang.compression.image.core;
 
 public enum CompressionResult {
     COMPRESSED_SUCCESS("成功壓縮"),
