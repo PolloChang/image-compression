@@ -1,4 +1,4 @@
-package work.pollochang.compression.image;
+package work.pollochang.compression.image.learn.jpg;
 
 /**
  * 用於快取的 Key，代表圖片的特徵「桶」。

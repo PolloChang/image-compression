@@ -1,4 +1,4 @@
-package work.pollochang.compression.image;
+package work.pollochang.compression.image.learn.jpg;
 
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;

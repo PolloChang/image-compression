@@ -1,4 +1,4 @@
-package work.pollochang.compression.image;
+package work.pollochang.compression.image.learn;
 
 /**
  * 用於快取的 Value，儲存學到的最佳壓縮參數。

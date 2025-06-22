@@ -1,6 +1,8 @@
 package work.pollochang.compression.image;
 
 import lombok.extern.slf4j.Slf4j;
+import work.pollochang.compression.image.learn.LearnedParams;
+import work.pollochang.compression.image.learn.jpg.SimilarityKey;
 
 import javax.imageio.*;
 import javax.imageio.spi.IIORegistry;

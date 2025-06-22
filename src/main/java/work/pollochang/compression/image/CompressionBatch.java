@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import work.pollochang.compression.image.learn.LearnedParams;
+import work.pollochang.compression.image.learn.jpg.SimilarityKey;
+import work.pollochang.compression.image.learn.jpg.SimilarityKeyDeserializer;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -188,7 +191,7 @@ public class CompressionBatch {
         }
 
         ObjectMapper mapper = new ObjectMapper();
-        mapper.enable(SerializationFeature.INDENT_OUTPUT); // 讓 JSON 格式化，方便閱讀
+        //mapper.enable(SerializationFeature.INDENT_OUTPUT); // 讓 JSON 格式化，方便閱讀
 
         try {
             log.info("正在將 {} 筆快取紀錄儲存至 {} ...", cache.size(), path);
