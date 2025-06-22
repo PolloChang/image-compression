@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DecimalFormat;
 import java.util.Iterator;
+import java.util.Map;
 
 /**
  * 圖片壓縮工具類
@@ -48,7 +49,20 @@ public final class ImageCompression {
 
     private ImageCompression() {}
 
-    public static CompressionReport processImage(Path inputPath, Path outputDir, CompressionParams params) {
+    /**
+     * 簽章
+     * @param inputPath
+     * @param outputDir
+     * @param params
+     * @param cache
+     * @return
+     */
+    public static CompressionReport processImage(
+            Path inputPath,
+            Path outputDir,
+            CompressionParams params,
+            Map<SimilarityKey, LearnedParams> cache
+    ) {
         long originalSize;
         try {
             if (!Files.exists(inputPath) || !Files.isReadable(inputPath)) {
@@ -75,7 +89,7 @@ public final class ImageCompression {
             Path outputFile = outputDir.resolve(inputPath.getFileName());
             log.debug("{} - 開始處理", inputPath);
 
-            boolean success = compressImageIteratively(decodedImage, outputFile, params);
+            boolean success = compressImageIteratively(decodedImage, originalSize, outputFile, params, cache);
 
             if (success) {
                 long compressedSize = Files.size(outputFile);
@@ -163,73 +177,93 @@ public final class ImageCompression {
         }
     }
 
-    private static boolean compressImageIteratively(DecodedImage decodedImage, Path outputFile, CompressionParams params) throws IOException {
+    private static boolean compressImageIteratively(DecodedImage decodedImage, long originalSize, Path outputFile, CompressionParams params, Map<SimilarityKey, LearnedParams> cache) throws IOException {
         ImageReaderSpi spi = decodedImage.reader().getOriginatingProvider();
         String formatName = spi.getFormatNames()[0].toLowerCase();
-
         BufferedImage initialImage = decodedImage.image();
 
         switch (formatName) {
             case "jpeg":
             case "jpg":
-                return compressJpgWithTargetSize(initialImage, outputFile, params);
+                // *** 傳入 originalSize 和 cache ***
+                return compressJpgWithTargetSize(initialImage, originalSize, outputFile, params, cache);
             case "png":
                 return compressPngWithTargetSize(initialImage, outputFile, params);
             default:
-                log.warn("不支援的檔案格式: {} (來自 SPI)，跳過壓縮: {}", formatName, outputFile.getFileName());
+                log.warn("不支援的檔案格式: {} ...", formatName);
                 return false;
         }
-
     }
 
-    private static boolean compressJpgWithTargetSize(BufferedImage originalImage, Path outputFile, CompressionParams params) throws IOException {
+    private static boolean compressJpgWithTargetSize(BufferedImage originalImage, long originalSize, Path outputFile, CompressionParams params, Map<SimilarityKey, LearnedParams> cache) throws IOException {
+        // 1. 產生快取 Key
+        SimilarityKey key = createKey(originalImage, originalSize);
+        LearnedParams cachedParams = cache.get(key);
+
+        // 2. 如果快取命中，嘗試使用已學習的參數
+        if (cachedParams != null) {
+            log.debug("快取命中: {} -> 使用學習參數 (q={}, s={})", outputFile.getFileName(), cachedParams.quality(), cachedParams.scale());
+            BufferedImage imageToCompress = originalImage;
+            boolean isResized = false;
+            // 如果學習到的參數包含縮放，則先縮放
+            if (cachedParams.scale() < 1.0) {
+                imageToCompress = resizeImage(originalImage, cachedParams.scale());
+                isResized = true;
+            }
+
+            try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+                compressJpgToStream(imageToCompress, bos, cachedParams.quality());
+                if (bos.size() <= params.targetMaxSizeBytes()) {
+                    Files.write(outputFile, bos.toByteArray());
+                    log.info("快取成功: {} 使用學習參數直接達成目標。", outputFile.getFileName());
+                    if (isResized) imageToCompress.flush();
+                    return true;
+                } else {
+                    log.warn("快取失效: {} 使用學習參數後檔案大小 ({}) 仍超標，退回標準壓縮流程。",
+                            outputFile.getFileName(), formatFileSize(bos.size()));
+                    if (isResized) imageToCompress.flush();
+                }
+            }
+        }
+
+        // 為了方便整合，我將您的原邏輯稍作修改並加上學習功能
         final float QUALITY_STEP = 0.1f;
         final double SCALE_STEP = 0.85;
 
         BufferedImage currentImage = originalImage;
-        // 為了避免重複創建和銷毀，只在需要時才縮放
         boolean isOriginal = true;
+        double currentScale = 1.0;
 
         try {
-            // 從目前的圖片尺寸開始，由高品質往低品質嘗試
-            for (float quality = params.quality(); quality >= 0.1f; quality -= QUALITY_STEP) {
-                try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
-                    compressJpgToStream(currentImage, bos, quality);
-                    if (bos.size() <= params.targetMaxSizeBytes()) {
-                        log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", quality), "1.0 (current size)");
-                        Files.write(outputFile, bos.toByteArray());
-                        return true;
-                    }
+            // 迴圈縮放
+            for (double scale = 1.0; scale > 0.1; scale = (scale == 1.0) ? SCALE_STEP : scale * SCALE_STEP) {
+                if (scale < 1.0) {
+                    if (!isOriginal) currentImage.flush();
+                    currentImage = resizeImage(originalImage, scale);
+                    isOriginal = false;
+                    currentScale = scale;
+                    log.debug("檔案仍然過大，縮放至 {}%", (int) (scale * 100));
                 }
-            }
 
-            // 如果最高品質的嘗試仍然失敗，開始縮放圖片
-            // 外部迴圈改為縮放，內部迴圈調整品質
-            for (double scale = SCALE_STEP; scale > 0.1; scale *= SCALE_STEP) {
-
-                // 釋放上一輪的縮放圖
-                if (!isOriginal) {
-                    currentImage.flush();
-                }
-                currentImage = resizeImage(originalImage, scale);
-                isOriginal = false; // 標記 currentImage 已經是一個縮放後的副本
-
-                log.debug("檔案仍然過大，縮放至 {}%", (int) (scale * 100));
-
-                // 在新的尺寸下，再次從高到低嘗試品質
+                // 迴圈品質
                 for (float quality = params.quality(); quality >= 0.1f; quality -= QUALITY_STEP) {
                     try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
                         compressJpgToStream(currentImage, bos, quality);
                         if (bos.size() <= params.targetMaxSizeBytes()) {
-                            log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", quality), String.format("%.2f", scale));
+                            log.debug("找到合適參數: quality={}, scale={}", String.format("%.2f", quality), String.format("%.2f", currentScale));
                             Files.write(outputFile, bos.toByteArray());
+
+                            // *** 學習功能核心 ***
+                            LearnedParams newParams = new LearnedParams(quality, currentScale);
+                            cache.put(key, newParams);
+                            log.info("{} - 學習並儲存新參數 -> (q={}, s={})", outputFile, newParams.quality(), newParams.scale());
+
                             return true;
                         }
                     }
                 }
             }
         } finally {
-            // 只有當 currentImage 不是原始圖片時才 flush，避免重複 flush
             if (!isOriginal && currentImage != null) {
                 currentImage.flush();
             }
@@ -322,6 +356,21 @@ public final class ImageCompression {
         final String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
         int digitGroups = (int) (Math.log10(size) / Math.log10(1024));
         return new DecimalFormat("#,##0.#").format(size / Math.pow(1024, digitGroups)) + " " + units[digitGroups];
+    }
+
+    /**
+     * 輔助方法來產生 Key
+     * @param image
+     * @param fileSize
+     * @return
+     */
+    private static SimilarityKey createKey(BufferedImage image, long fileSize) {
+        // 調整分桶大小可以改變快取的粒度
+        // 寬/高每 100px 一個桶，檔案大小每 100KB (102400 bytes) 一個桶
+        int widthBucket = image.getWidth() / 100;
+        int heightBucket = image.getHeight() / 100;
+        long sizeBucket = fileSize / 102400;
+        return new SimilarityKey(widthBucket, heightBucket, sizeBucket);
     }
 
 

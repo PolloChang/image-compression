@@ -53,6 +53,9 @@ dependencies {
     implementation("com.twelvemonkeys.common:common-io:3.12.0")
     // https://mvnrepository.com/artifact/com.twelvemonkeys.common/common-image
     implementation("com.twelvemonkeys.common:common-image:3.12.0")
+
+    // https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.19.1")
 }
 
 test {

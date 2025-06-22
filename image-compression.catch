@@ -1,0 +1,46 @@
+{
+  "SimilarityKey[widthBucket=61, heightBucket=37, sizeBucket=14]" : {
+    "quality" : 0.25,
+    "scale" : 0.85
+  },
+  "SimilarityKey[widthBucket=70, heightBucket=46, sizeBucket=50]" : {
+    "quality" : 0.25,
+    "scale" : 1.0
+  },
+  "SimilarityKey[widthBucket=40, heightBucket=60, sizeBucket=34]" : {
+    "quality" : 0.25,
+    "scale" : 1.0
+  },
+  "SimilarityKey[widthBucket=46, heightBucket=70, sizeBucket=45]" : {
+    "quality" : 0.25,
+    "scale" : 1.0
+  },
+  "SimilarityKey[widthBucket=71, heightBucket=37, sizeBucket=156]" : {
+    "quality" : 0.25,
+    "scale" : 1.0
+  },
+  "SimilarityKey[widthBucket=31, heightBucket=47, sizeBucket=18]" : {
+    "quality" : 0.25,
+    "scale" : 1.0
+  },
+  "SimilarityKey[widthBucket=34, heightBucket=23, sizeBucket=60]" : {
+    "quality" : 0.25,
+    "scale" : 1.0
+  },
+  "SimilarityKey[widthBucket=56, heightBucket=37, sizeBucket=119]" : {
+    "quality" : 0.25,
+    "scale" : 1.0
+  },
+  "SimilarityKey[widthBucket=61, heightBucket=37, sizeBucket=54]" : {
+    "quality" : 0.25,
+    "scale" : 0.85
+  },
+  "SimilarityKey[widthBucket=57, heightBucket=38, sizeBucket=44]" : {
+    "quality" : 0.25,
+    "scale" : 1.0
+  },
+  "SimilarityKey[widthBucket=63, heightBucket=62, sizeBucket=62]" : {
+    "quality" : 0.15,
+    "scale" : 1.0
+  }
+}
