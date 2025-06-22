@@ -4,15 +4,21 @@
 
 ## 說明
 
+執行環境要求
+
+* Java version 21 or later version
+
 參數說明
 
 ```bash
-$ java -jar image-compression-1.0-SNAPSHOT.jar -h                                                                       
-Usage: image-compressor [-hV] -f=<fileList> [-i=<minHeight>] -o=<saveDir>
-                        [-q=<quality>] [-s=<minSizeBytes>]
-                        [-t=<targetMaxSizeBytes>] [--timeOut=<timeOutHr>]
-                        [-w=<minWidth>]
+$ java -jar image-compression-1.0-SNAPSHOT.jar -h 
+Usage: image-compressor [-hV] [--cache-file=<cacheFile>] -f=<fileList>
+                        [-i=<minHeight>] -o=<saveDir> [-q=<quality>]
+                        [-s=<minSizeBytes>] [-t=<targetMaxSizeBytes>]
+                        [--timeOut=<timeOutHr>] [-w=<minWidth>]
 批次圖片壓縮工具
+      --cache-file=<cacheFile>
+                            用來讀取和儲存學習快取的檔案路徑。
   -f, --file-list=<fileList>
                             包含圖片路徑的文字檔案。
   -h, --help                Show this help message and exit.
@@ -69,6 +75,4 @@ java ${JAVA_OPT} -jar image-compression-1.0-SNAPSHOT.jar -f /data/tmp/resize-ima
 
 ### JPG
 
-壓縮到指定檔案大小(預設: 1MB
-
-)
+壓縮到指定檔案大小(預設: 1MB)
