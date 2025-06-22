@@ -80,7 +80,7 @@ public final class ImageCompression {
             if (success) {
                 long compressedSize = Files.size(outputFile);
                 double ratio = 100.0 * (originalSize - compressedSize) / originalSize;
-                log.info("處理成功: {} -> {} (大小: {} -> {}, 節省: {:.2f}%)",
+                log.info("處理成功: {} -> {} (大小: {} -> {}, 節省: {}%)",
                         inputPath.getFileName(), outputFile.getFileName(),
                         formatFileSize(originalSize), formatFileSize(compressedSize), ratio);
                 return new CompressionReport(CompressionResult.COMPRESSED_SUCCESS, originalSize, compressedSize);
