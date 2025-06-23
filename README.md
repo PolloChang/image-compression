@@ -17,8 +17,8 @@ Usage: image-compressor [-hV] [--cache-file=<cacheFile>] -f=<fileList>
                         [-s=<minSizeBytes>] [-t=<targetMaxSizeBytes>]
                         [--timeOut=<timeOutHr>] [-w=<minWidth>]
 批次圖片壓縮工具
-      --cache-file=<cacheFile>
-                            用來讀取和儲存學習快取的檔案路徑。
+      --cache-db=<h2DbFile>
+                            H2 學習快取資料庫的檔案路徑。
   -f, --file-list=<fileList>
                             包含圖片路徑的文字檔案。
   -h, --help                Show this help message and exit.
