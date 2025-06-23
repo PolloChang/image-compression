@@ -139,35 +139,31 @@ public class ImageCompressionJpg {
         float bestQuality = -1.0f;
 
         // 通常 7-8 次迭代對於 0-1.0 的範圍已經有足夠的精度
-        for (int i = 0; i < 8; i++) {
-            float midQuality = (lowQuality + highQuality) / 2.0f;
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream((int) targetMaxSizeBytes)) {
+            // 通常 7-8 次迭代對於 0-1.0 的範圍已經有足夠的精度
+            for (int i = 0; i < 8; i++) {
+                float midQuality = (lowQuality + highQuality) / 2.0f;
 
-            // 如果品質過低，可能沒有繼續搜尋的意義
-            if (midQuality < 0.01f) {
-                break;
-            }
+                if (midQuality < 0.01f) {
+                    break;
+                }
 
-            long currentSize;
-            // 使用預設大小來初始化，減少陣列複製
-            try (ByteArrayOutputStream bos = new ByteArrayOutputStream((int) targetMaxSizeBytes)) {
+                bos.reset(); // 【優化】重置串流，準備下次寫入
                 compressJpgToStream(image, bos, midQuality);
-                currentSize = bos.size();
-            }
+                long currentSize = bos.size();
 
-            log.trace(" 測試品質: {:.3f}, 檔案大小: {}", midQuality, FileTools.formatFileSize(currentSize));
+                log.trace(" 測試品質: {:.3f}, 檔案大小: {}", midQuality, FileTools.formatFileSize(currentSize));
 
-            if (currentSize <= targetMaxSizeBytes) {
-                // 成功！這個品質可用。記錄下來，並嘗試尋找更高的品質。
-                bestQuality = midQuality;
-                lowQuality = midQuality; // 移動下界，嘗試在 [mid, high] 區間尋找更好畫質
-            } else {
-                // 失敗！檔案還是太大。必須降低品質。
-                highQuality = midQuality; // 移動上界，在 [low, mid] 區間繼續尋找
-            }
+                if (currentSize <= targetMaxSizeBytes) {
+                    bestQuality = midQuality;
+                    lowQuality = midQuality;
+                } else {
+                    highQuality = midQuality;
+                }
 
-            // 如果上下界已經非常接近，可以提前結束
-            if ((highQuality - lowQuality) < 0.01f) {
-                break;
+                if ((highQuality - lowQuality) < 0.01f) {
+                    break;
+                }
             }
         }
 
