@@ -30,8 +30,10 @@ repositories {
 }
 
 dependencies {
+
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+
     // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
     runtimeOnly("org.slf4j:slf4j-api:2.0.17")
 
@@ -85,4 +87,10 @@ task runDev(type: JavaExec) {
     args '--file-list', '/data/tmp/resize-image/file-list.txt',
             '--output-dir', '/data/tmp/resize-image/result',
             '--quality', '0.25'
+}
+
+shadowJar {
+    dependsOn test
+    // 確保只有測試通過才執行打包
+    mustRunAfter test
 }
